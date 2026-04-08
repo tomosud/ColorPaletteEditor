@@ -246,6 +246,22 @@ button:active {
   border-left: 2px solid var(--border) !important;
 }
 
+/* Row group label (left side, spanning multiple rows) */
+.row-group-label {
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+  padding: 0 10px 0 4px;
+  white-space: nowrap;
+  vertical-align: middle;
+  border-top: 2px solid var(--border);
+}
+
+.row-group-spacer {
+  min-width: 60px;
+}
+
 /* ── Color Picker Panel ──────────────────────────── */
 .color-picker-panel {
   position: fixed;

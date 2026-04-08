@@ -1,0 +1,15 @@
+{
+  "name": "Grass",
+  "width": 4,
+  "height": 2,
+  "rows": [
+    { "label": "BC" },
+    { "label": "Shadow" }
+  ],
+  "columns": [
+    { "label": "Spring" },
+    { "label": "Summer" },
+    { "label": "Autumn" },
+    { "label": "Winter" }
+  ]
+}

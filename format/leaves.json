@@ -1,0 +1,39 @@
+{
+  "name": "Leaves",
+  "width": 8,
+  "height": 2,
+  "rows": [
+    { "label": "BC" },
+    { "label": "Shadow" }
+  ],
+  "columns": [
+    {
+      "label": "Spring",
+      "segments": [
+        { "label": "color1" },
+        { "label": "color2" }
+      ]
+    },
+    {
+      "label": "Summer",
+      "segments": [
+        { "label": "color1" },
+        { "label": "color2" }
+      ]
+    },
+    {
+      "label": "Autumn",
+      "segments": [
+        { "label": "color1" },
+        { "label": "color2" }
+      ]
+    },
+    {
+      "label": "Winter",
+      "segments": [
+        { "label": "color1" },
+        { "label": "color2" }
+      ]
+    }
+  ]
+}

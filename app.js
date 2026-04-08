@@ -23,7 +23,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 // ── Load Formats ───────────────────────────────────────
 async function loadFormats() {
-  const formatFiles = ['landscape.json'];
+  const formatFiles = ['landscape.json', 'colorPalette16.json', 'leaves.json', 'grass.json'];
   const select = document.getElementById('format-select');
 
   for (const file of formatFiles) {
@@ -243,72 +243,126 @@ class PaletteWindow {
 
   _buildGrid() {
     const { format } = this;
+    const hasColGroups = format.columns.some(c => c.segments?.length);
+    const hasRowGroups = !!format.rowGroups;
+
+    // Flatten rows for uniform access
+    const flatRows = hasRowGroups
+      ? format.rowGroups.flatMap(g => g.rows.map(r => ({ ...r, groupLabel: g.label })))
+      : format.rows;
+
     const table = document.createElement('table');
     table.className = 'grid-table';
 
-    // ── Row 1: column group labels ──
-    const colGroupRow = document.createElement('tr');
-    colGroupRow.className = 'col-group-row';
-    // corner
-    const corner = document.createElement('th');
-    corner.className = 'row-label-spacer';
-    colGroupRow.appendChild(corner);
-
-    for (let gi = 0; gi < format.columns.length; gi++) {
-      const grp = format.columns[gi];
-      const th = document.createElement('th');
-      th.colSpan = grp.segments.length;
-      th.textContent = grp.label;
-      if (gi > 0) th.classList.add('group-divider');
-      colGroupRow.appendChild(th);
-    }
-    table.appendChild(colGroupRow);
-
-    // ── Row 2: segment labels ──
-    const segRow = document.createElement('tr');
-    segRow.className = 'seg-row';
-    const segCorner = document.createElement('th');
-    segRow.appendChild(segCorner);
-
-    let colIndex = 0;
-    for (let gi = 0; gi < format.columns.length; gi++) {
-      const grp = format.columns[gi];
-      for (let si = 0; si < grp.segments.length; si++) {
-        const th = document.createElement('th');
-        th.textContent = grp.segments[si].label;
-        if (si === 0 && gi > 0) th.classList.add('group-divider');
-        segRow.appendChild(th);
-        colIndex++;
+    // ── Header: col group label row (only when columns have segments) ──
+    if (hasColGroups) {
+      const colGroupRow = document.createElement('tr');
+      colGroupRow.className = 'col-group-row';
+      // When rowGroups exist, need 2 leading spacers (group label + sub-row label)
+      if (hasRowGroups) {
+        const groupCorner = document.createElement('th');
+        groupCorner.className = 'row-label-spacer row-group-spacer';
+        groupCorner.rowSpan = 2;
+        colGroupRow.appendChild(groupCorner);
       }
-    }
-    table.appendChild(segRow);
+      const corner = document.createElement('th');
+      corner.className = 'row-label-spacer';
+      corner.rowSpan = 2;
+      colGroupRow.appendChild(corner);
 
-    // ── Data rows ──
-    for (let row = 0; row < format.height; row++) {
-      const tr = document.createElement('tr');
-      const rowLabel = document.createElement('td');
-      rowLabel.className = 'row-label';
-      rowLabel.textContent = format.rows[row]?.label ?? `R${row}`;
-      tr.appendChild(rowLabel);
+      for (let gi = 0; gi < format.columns.length; gi++) {
+        const grp = format.columns[gi];
+        const th = document.createElement('th');
+        th.colSpan = grp.segments.length;
+        th.textContent = grp.label;
+        if (gi > 0) th.classList.add('group-divider');
+        colGroupRow.appendChild(th);
+      }
+      table.appendChild(colGroupRow);
 
-      let col = 0;
+      // segment label row (no leading cells — covered by rowSpan above)
+      const segRow = document.createElement('tr');
+      segRow.className = 'seg-row';
       for (let gi = 0; gi < format.columns.length; gi++) {
         const grp = format.columns[gi];
         for (let si = 0; si < grp.segments.length; si++) {
-          const td = document.createElement('td');
-          td.className = 'pixel-cell';
-          if (si === 0 && gi > 0) td.classList.add('group-divider');
-          td.dataset.row = row;
-          td.dataset.col = col;
-          td.style.background = hex8ToCSS(this.pixels[row][col]);
-          // Capture col by value — `col` is a shared variable that changes each iteration
-          const _col = col;
-          td.addEventListener('mousedown', (e) => this._onCellClick(e, row, _col));
-          tr.appendChild(td);
-          col++;
+          const th = document.createElement('th');
+          th.textContent = grp.segments[si].label;
+          if (si === 0 && gi > 0) th.classList.add('group-divider');
+          segRow.appendChild(th);
         }
       }
+      table.appendChild(segRow);
+    } else {
+      // Simple column label row
+      const colLabelRow = document.createElement('tr');
+      colLabelRow.className = 'col-group-row';
+      // When rowGroups exist, data rows have 2 leading cells (group + sub-row label)
+      if (hasRowGroups) {
+        const groupCorner = document.createElement('th');
+        groupCorner.className = 'row-label-spacer row-group-spacer';
+        colLabelRow.appendChild(groupCorner);
+      }
+      const corner = document.createElement('th');
+      corner.className = 'row-label-spacer';
+      colLabelRow.appendChild(corner);
+      for (let ci = 0; ci < format.columns.length; ci++) {
+        const th = document.createElement('th');
+        th.textContent = format.columns[ci].label;
+        colLabelRow.appendChild(th);
+      }
+      table.appendChild(colLabelRow);
+    }
+
+    // ── Data rows ──
+    const colCount = format.width;
+    let row = 0;
+
+    const appendDataRow = (rowDef, rowIndex, isGroupFirst, groupRowspan) => {
+      const tr = document.createElement('tr');
+
+      // Row group label cell (only on first sub-row of group)
+      if (hasRowGroups && isGroupFirst) {
+        const groupTd = document.createElement('td');
+        groupTd.className = 'row-group-label';
+        groupTd.rowSpan = groupRowspan;
+        groupTd.textContent = rowDef.groupLabel;
+        tr.appendChild(groupTd);
+      }
+
+      // Sub-row label
+      const rowLabel = document.createElement('td');
+      rowLabel.className = 'row-label';
+      rowLabel.textContent = rowDef.label ?? `R${rowIndex}`;
+      tr.appendChild(rowLabel);
+
+      // Pixel cells
+      for (let col = 0; col < colCount; col++) {
+        const td = document.createElement('td');
+        td.className = 'pixel-cell';
+        td.dataset.row = rowIndex;
+        td.dataset.col = col;
+        td.style.background = hex8ToCSS(this.pixels[rowIndex][col]);
+        const _row = rowIndex, _col = col;
+        td.addEventListener('mousedown', (e) => this._onCellClick(e, _row, _col));
+        tr.appendChild(td);
+      }
       table.appendChild(tr);
+    };
+
+    if (hasRowGroups) {
+      for (const group of format.rowGroups) {
+        for (let si = 0; si < group.rows.length; si++) {
+          const rowDef = { ...group.rows[si], groupLabel: group.label };
+          appendDataRow(rowDef, row, si === 0, group.rows.length);
+          row++;
+        }
+      }
+    } else {
+      for (const rowDef of flatRows) {
+        appendDataRow(rowDef, row, false, 1);
+        row++;
+      }
     }
 
     return table;
