@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Color Palette Editor</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/@jaames/iro@5/dist/iro.min.js"></script>
+</head>
+<body>
+  <header class="header">
+    <span class="app-title">Color Palette Editor</span>
+    <div class="header-controls">
+      <select id="format-select">
+        <option value="">-- Select Format --</option>
+      </select>
+      <button id="new-palette-btn">New Palette</button>
+      <span class="drop-hint">or drop a PNG/JSON here</span>
+    </div>
+  </header>
+
+  <div id="workspace" class="workspace">
+    <div id="drop-overlay" class="drop-overlay">
+      <div class="drop-overlay-text">Drop PNG or JSON to open</div>
+    </div>
+  </div>
+
+  <!-- Color Picker Panel (shared, floating) -->
+  <div id="color-picker-panel" class="color-picker-panel hidden">
+    <div class="picker-header">
+      <span class="picker-title">Color</span>
+      <button id="picker-close-btn" class="picker-close-btn">✕</button>
+    </div>
+    <div id="iro-picker"></div>
+    <div class="color-inputs">
+      <div class="input-row">
+        <label>Hex</label>
+        <input type="text" id="hex-input" maxlength="7" placeholder="#ffffff">
+      </div>
+      <div class="input-row">
+        <label>R</label>
+        <input type="number" id="r-input" min="0" max="255">
+        <label>G</label>
+        <input type="number" id="g-input" min="0" max="255">
+        <label>B</label>
+        <input type="number" id="b-input" min="0" max="255">
+      </div>
+      <div class="input-row">
+        <label>A</label>
+        <input type="number" id="a-input" min="0" max="255" value="255">
+      </div>
+    </div>
+    <div class="picker-actions">
+      <button id="copy-color-btn">Copy</button>
+      <button id="paste-color-btn">Paste</button>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

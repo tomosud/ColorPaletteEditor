@@ -1,0 +1,361 @@
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --bg: #1e1e1e;
+  --bg2: #252526;
+  --bg3: #2d2d2d;
+  --border: #3c3c3c;
+  --text: #cccccc;
+  --text-dim: #888;
+  --accent: #569cd6;
+  --accent2: #4ec9b0;
+  --select: #094771;
+  --header-h: 44px;
+  --cell-size: 40px;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-size: 13px;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── Header ─────────────────────────────────────── */
+.header {
+  height: var(--header-h);
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  gap: 12px;
+  flex-shrink: 0;
+  z-index: 100;
+}
+
+.app-title {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--accent2);
+  margin-right: 8px;
+}
+
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+select, button {
+  background: var(--bg3);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 4px 10px;
+  font-size: 13px;
+  cursor: pointer;
+  outline: none;
+}
+
+select:hover, button:hover {
+  border-color: var(--accent);
+}
+
+button:active {
+  background: var(--select);
+}
+
+.drop-hint {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+/* ── Workspace ───────────────────────────────────── */
+.workspace {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
+.drop-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(86, 156, 214, 0.08);
+  border: 2px dashed var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 500;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.drop-overlay.active {
+  opacity: 1;
+}
+
+.drop-overlay-text {
+  font-size: 20px;
+  color: var(--accent);
+}
+
+/* ── Palette Window ──────────────────────────────── */
+.palette-window {
+  position: absolute;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+  min-width: 200px;
+  user-select: none;
+}
+
+.palette-window.active {
+  border-color: var(--accent);
+  z-index: 200;
+}
+
+.window-titlebar {
+  background: var(--bg3);
+  border-bottom: 1px solid var(--border);
+  border-radius: 4px 4px 0 0;
+  display: flex;
+  align-items: center;
+  padding: 6px 10px;
+  cursor: move;
+  gap: 8px;
+}
+
+.window-title {
+  flex: 1;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--accent2);
+}
+
+.window-close-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 14px;
+  padding: 0 4px;
+  cursor: pointer;
+  border-radius: 2px;
+  line-height: 1;
+}
+
+.window-close-btn:hover {
+  background: #c42b1c;
+  color: #fff;
+  border-color: transparent;
+}
+
+.window-toolbar {
+  display: flex;
+  align-items: center;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  gap: 6px;
+}
+
+.window-toolbar button {
+  font-size: 12px;
+  padding: 3px 8px;
+}
+
+.window-content {
+  padding: 10px;
+  overflow: auto;
+}
+
+/* ── Grid ────────────────────────────────────────── */
+.palette-grid-wrapper {
+  display: inline-block;
+}
+
+.grid-table {
+  border-collapse: collapse;
+}
+
+/* Column group header row */
+.col-group-row th {
+  text-align: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+  padding: 0 2px 4px;
+  white-space: nowrap;
+}
+
+.col-group-row .row-label-spacer {
+  /* empty corner */
+}
+
+/* Segment header row */
+.seg-row th {
+  text-align: center;
+  font-size: 10px;
+  color: var(--text-dim);
+  padding: 0 2px 3px;
+  white-space: nowrap;
+}
+
+/* Row label */
+.row-label {
+  text-align: right;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent2);
+  padding-right: 8px;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+/* Pixel cell */
+.pixel-cell {
+  width: var(--cell-size);
+  height: var(--cell-size);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  position: relative;
+  transition: box-shadow 0.05s;
+}
+
+.pixel-cell:hover {
+  box-shadow: inset 0 0 0 2px rgba(255,255,255,0.3);
+  z-index: 1;
+}
+
+.pixel-cell.selected {
+  box-shadow: inset 0 0 0 2px #fff, 0 0 0 1px var(--accent);
+  z-index: 2;
+}
+
+/* Group divider */
+.group-divider {
+  border-left: 2px solid var(--border) !important;
+}
+
+/* ── Color Picker Panel ──────────────────────────── */
+.color-picker-panel {
+  position: fixed;
+  top: 60px;
+  right: 16px;
+  width: 240px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.7);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+}
+
+.color-picker-panel.hidden {
+  display: none;
+}
+
+.picker-header {
+  display: flex;
+  align-items: center;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.picker-title {
+  flex: 1;
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.picker-close-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 0 2px;
+}
+
+.picker-close-btn:hover {
+  color: #fff;
+  background: none;
+  border-color: transparent;
+}
+
+#iro-picker {
+  padding: 10px;
+  display: flex;
+  justify-content: center;
+}
+
+.color-inputs {
+  padding: 0 10px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.input-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.input-row label {
+  font-size: 11px;
+  color: var(--text-dim);
+  width: 14px;
+  flex-shrink: 0;
+}
+
+.input-row input[type="text"] {
+  flex: 1;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 3px;
+  padding: 3px 6px;
+  font-size: 12px;
+  font-family: monospace;
+  width: 100%;
+}
+
+.input-row input[type="number"] {
+  flex: 1;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 3px;
+  padding: 3px 4px;
+  font-size: 12px;
+  width: 52px;
+  min-width: 0;
+}
+
+.input-row input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.picker-actions {
+  display: flex;
+  gap: 6px;
+  padding: 6px 10px 10px;
+}
+
+.picker-actions button {
+  flex: 1;
+  font-size: 12px;
+  padding: 4px;
+}

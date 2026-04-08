@@ -1,0 +1,47 @@
+{
+  "name": "Landscape",
+  "width": 16,
+  "height": 2,
+  "rows": [
+    { "label": "BC" },
+    { "label": "Shadow" }
+  ],
+  "columns": [
+    {
+      "label": "Road",
+      "segments": [
+        { "label": "Spring" },
+        { "label": "Summer" },
+        { "label": "Autumn" },
+        { "label": "Winter" }
+      ]
+    },
+    {
+      "label": "Grass",
+      "segments": [
+        { "label": "Spring" },
+        { "label": "Summer" },
+        { "label": "Autumn" },
+        { "label": "Winter" }
+      ]
+    },
+    {
+      "label": "Soil_Upper",
+      "segments": [
+        { "label": "Spring" },
+        { "label": "Summer" },
+        { "label": "Autumn" },
+        { "label": "Winter" }
+      ]
+    },
+    {
+      "label": "Soil_Bottom",
+      "segments": [
+        { "label": "Spring" },
+        { "label": "Summer" },
+        { "label": "Autumn" },
+        { "label": "Winter" }
+      ]
+    }
+  ]
+}
