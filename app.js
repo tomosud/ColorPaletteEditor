@@ -219,6 +219,25 @@ function initColorPicker() {
   document.getElementById('copy-color-btn').addEventListener('click', copyColor);
   document.getElementById('paste-color-btn').addEventListener('click', pasteColor);
 
+  const eyedropperBtn = document.getElementById('eyedropper-btn');
+  if (window.EyeDropper) {
+    eyedropperBtn.addEventListener('click', async () => {
+      try {
+        const dropper = new EyeDropper();
+        const result = await dropper.open();
+        snapIfNeeded();
+        state._pickerChanging = false;
+        state.colorPicker.color.hexString = result.sRGBHex;
+      } catch (e) {
+        // キャンセルされた場合は何もしない
+      }
+    });
+  } else {
+    eyedropperBtn.title = 'EyeDropper はこのブラウザでは非対応です';
+    eyedropperBtn.disabled = true;
+    eyedropperBtn.style.opacity = '0.4';
+  }
+
   initAdjust();
 }
 
