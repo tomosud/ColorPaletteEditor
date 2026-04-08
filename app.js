@@ -479,8 +479,9 @@ async function refreshFolderFiles() {
 
 async function openFolderEntry(entry) {
   const file = await entry.getFile();
+  const baseName = file.name.replace(/\.[^.]+$/, '');
   if (file.name.endsWith('.json')) {
-    handleJsonDrop(file);
+    handleJsonDrop(file, baseName);
   } else {
     const reader = new FileReader();
     reader.onload = e => {
@@ -489,7 +490,7 @@ async function openFolderEntry(entry) {
       try {
         const data = JSON.parse(json);
         createPaletteWindow(data.format, data.pixels,
-          { id: data.id, name: data.name, colLabels: data.colLabels, memo: data.memo });
+          { id: data.id, name: baseName, colLabels: data.colLabels, memo: data.memo });
       } catch { alert('Failed to parse palette data.'); }
     };
     reader.readAsArrayBuffer(file);
@@ -932,13 +933,13 @@ function initDrop() {
   });
 }
 
-function handleJsonDrop(file) {
+function handleJsonDrop(file, overrideName) {
   const reader = new FileReader();
   reader.onload = (e) => {
     try {
       const data = JSON.parse(e.target.result);
       if (data.format && data.pixels) {
-        createPaletteWindow(data.format, data.pixels, { id: data.id, name: data.name, colLabels: data.colLabels, memo: data.memo });
+        createPaletteWindow(data.format, data.pixels, { id: data.id, name: overrideName ?? data.name, colLabels: data.colLabels, memo: data.memo });
       } else if (data.name && data.width) {
         state.formats[data.name] = data;
         addFormatOption(data);
