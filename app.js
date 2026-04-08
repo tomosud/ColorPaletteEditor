@@ -14,6 +14,7 @@ const state = {
   dragState: null,     // {win, startRow, startCol, baseSelection}
   db: null,
   dbReady: false,
+  adjustOrigins: {},   // { 'winId-row-col': hex6 } — original colors before Adjust
 };
 
 // ── Init ───────────────────────────────────────────────
@@ -108,7 +109,7 @@ async function loadFormats() {
 
 // ── Color Picker ───────────────────────────────────────
 function initColorPicker() {
-  // Only Box — hue handled by custom slider
+  // Only Box — hue handled by H slider
   state.colorPicker = new iro.ColorPicker('#iro-picker', {
     width: 200,
     color: '#808080',
@@ -128,23 +129,53 @@ function initColorPicker() {
     applyColorToSelected(colorToHex6(color));
   });
 
-  // Hue range slider
-  const hueSlider = document.getElementById('hue-slider');
-  hueSlider.addEventListener('mousedown', () => {
+  // Helper: snapshot if cells are selected
+  const snapIfNeeded = () => {
     if (state.selectedCells.length > 0 && state.activeWindow)
       state.activeWindow._snapshotBefore();
+  };
+
+  // RGB channel sliders
+  ['r', 'g', 'b'].forEach(ch => {
+    const slider = document.getElementById(`${ch}-slider`);
+    const input  = document.getElementById(`${ch}-input`);
+    slider.addEventListener('mousedown', snapIfNeeded);
+    slider.addEventListener('input', () => {
+      input.value = slider.value;
+      const r = parseInt(document.getElementById('r-slider').value);
+      const g = parseInt(document.getElementById('g-slider').value);
+      const b = parseInt(document.getElementById('b-slider').value);
+      state.colorPicker.color.set({ r, g, b });
+    });
   });
-  hueSlider.addEventListener('input', () => {
-    const h = parseInt(hueSlider.value);
-    document.getElementById('hue-value').textContent = h;
+
+  // H channel slider
+  const hSlider = document.getElementById('h-slider');
+  hSlider.addEventListener('mousedown', snapIfNeeded);
+  hSlider.addEventListener('input', () => {
+    document.getElementById('h-input').value = hSlider.value;
+    const h = parseInt(hSlider.value);
     const { s, v } = state.colorPicker.color.hsv;
     state.colorPicker.color.set({ h, s, v });
   });
 
-  // Text inputs — snapshot before applying
+  // S and V channel sliders
+  ['s', 'v'].forEach(ch => {
+    const slider = document.getElementById(`${ch}-slider`);
+    const input  = document.getElementById(`${ch}-input`);
+    slider.addEventListener('mousedown', snapIfNeeded);
+    slider.addEventListener('input', () => {
+      input.value = slider.value;
+      const h = state.colorPicker.color.hsv.h;
+      const s = parseInt(document.getElementById('s-slider').value);
+      const v = parseInt(document.getElementById('v-slider').value);
+      state.colorPicker.color.set({ h, s, v });
+    });
+  });
+
+  // Number inputs — snapshot before applying
   const snapshotOnChange = (fn) => (...args) => {
-    if (state.selectedCells.length > 0 && state.activeWindow)
-      state.activeWindow._snapshotBefore();
+    snapIfNeeded();
     fn(...args);
   };
 
@@ -154,27 +185,38 @@ function initColorPicker() {
   ['h-input', 's-input', 'v-input'].forEach(id =>
     document.getElementById(id).addEventListener('change', snapshotOnChange(onHSVInput)));
 
+  // Prevent channel-num mousedown from propagating (palette drag)
+  document.querySelectorAll('.channel-num').forEach(el =>
+    el.addEventListener('mousedown', e => e.stopPropagation()));
+
   document.getElementById('picker-close-btn').addEventListener('click', () => {
     document.getElementById('color-picker-panel').classList.add('hidden');
   });
 
   document.getElementById('copy-color-btn').addEventListener('click', copyColor);
   document.getElementById('paste-color-btn').addEventListener('click', pasteColor);
+
+  initAdjust();
 }
 
 function syncPickerToInputs(color) {
   document.getElementById('hex-input').value = color.hexString;
-  document.getElementById('r-input').value   = color.red;
-  document.getElementById('g-input').value   = color.green;
-  document.getElementById('b-input').value   = color.blue;
+  const r = color.red, g = color.green, b = color.blue;
+  document.getElementById('r-input').value = r;
+  document.getElementById('g-input').value = g;
+  document.getElementById('b-input').value = b;
+  document.getElementById('r-slider').value = r;
+  document.getElementById('g-slider').value = g;
+  document.getElementById('b-slider').value = b;
   const hsv = color.hsv;
-  const h = Math.round(hsv.h);
-  document.getElementById('h-input').value   = h;
-  document.getElementById('s-input').value   = Math.round(hsv.s);
-  document.getElementById('v-input').value   = Math.round(hsv.v);
-  // Sync custom hue slider
-  document.getElementById('hue-slider').value  = h;
-  document.getElementById('hue-value').textContent = h;
+  const h = Math.round(hsv.h), s = Math.round(hsv.s), v = Math.round(hsv.v);
+  document.getElementById('h-input').value = h;
+  document.getElementById('s-input').value = s;
+  document.getElementById('v-input').value = v;
+  document.getElementById('h-slider').value = h;
+  document.getElementById('s-slider').value = s;
+  document.getElementById('v-slider').value = v;
+  updateSliderTracks(r, g, b, h, s, v);
 }
 
 function setPickerColor(hex6) {
@@ -267,11 +309,13 @@ function pasteColor() {
 }
 
 document.addEventListener('keydown', (e) => {
-  const tag = document.activeElement?.tagName;
-  if (tag === 'INPUT' || tag === 'TEXTAREA') return;
-  if (e.ctrlKey && e.key === 'c') { e.preventDefault(); copyColor(); }
-  if (e.ctrlKey && e.key === 'v') { e.preventDefault(); pasteColor(); }
-  if (e.ctrlKey && e.key === 'z') { e.preventDefault(); state.activeWindow?._undo(); }
+  if (!e.ctrlKey) return;
+  const el = document.activeElement;
+  // Allow default shortcuts (copy text, undo text) in name/memo fields only
+  if (el?.classList?.contains('window-name-input') || el?.classList?.contains('window-memo')) return;
+  if (e.key === 'c') { e.preventDefault(); copyColor(); }
+  if (e.key === 'v') { e.preventDefault(); pasteColor(); }
+  if (e.key === 'z') { e.preventDefault(); state.activeWindow?._undo(); }
 });
 
 // ── Drag Area Selection ────────────────────────────────
@@ -331,6 +375,7 @@ function applySelectionVisual(cells) {
     const el = win.el.querySelector(`[data-row="${row}"][data-col="${col}"]`);
     if (el) el.classList.add('selected');
   }
+  captureAdjustOrigins();
 }
 
 // ── UI Init ────────────────────────────────────────────
@@ -621,6 +666,12 @@ class PaletteWindow {
     const base = isShift ? [...state.selectedCells] : [];
 
     if (!isShift) {
+      // Fresh selection: clear adjust origins and reset sliders
+      state.adjustOrigins = {};
+      ['dh', 'ds', 'dv'].forEach(id => {
+        document.getElementById(`${id}-slider`).value = 0;
+        document.getElementById(`${id}-input`).value  = 0;
+      });
       applySelectionVisual([]);
     }
 
@@ -661,7 +712,7 @@ class PaletteWindow {
 
     canvas.toBlob((blob) => {
       blob.arrayBuffer().then((buf) => {
-        const meta = JSON.stringify({ id: this.id, name: this.name, format: this.format, pixels: this.pixels });
+        const meta = JSON.stringify({ id: this.id, name: this.name, format: this.format, pixels: this.pixels, colLabels: this.colLabels, memo: this.memo });
         const pngWithMeta = injectPngText(buf, 'CPE_DATA', meta);
         const a = document.createElement('a');
         a.href = URL.createObjectURL(new Blob([pngWithMeta], { type: 'image/png' }));
@@ -721,7 +772,7 @@ function handleJsonDrop(file) {
     try {
       const data = JSON.parse(e.target.result);
       if (data.format && data.pixels) {
-        createPaletteWindow(data.format, data.pixels, { id: data.id, name: data.name });
+        createPaletteWindow(data.format, data.pixels, { id: data.id, name: data.name, colLabels: data.colLabels, memo: data.memo });
       } else if (data.name && data.width) {
         state.formats[data.name] = data;
         addFormatOption(data);
@@ -747,7 +798,7 @@ function handlePngDrop(file) {
     if (!json) { alert('No palette data in this PNG.'); return; }
     try {
       const data = JSON.parse(json);
-      createPaletteWindow(data.format, data.pixels, { id: data.id, name: data.name });
+      createPaletteWindow(data.format, data.pixels, { id: data.id, name: data.name, colLabels: data.colLabels, memo: data.memo });
     } catch { alert('Failed to parse palette data.'); }
   };
   reader.readAsArrayBuffer(file);
@@ -817,6 +868,126 @@ function extractPngText(buf, keyword) {
     i += 12 + len;
   }
   return null;
+}
+
+// ── Slider track color update ──────────────────────────
+function updateSliderTracks(r, g, b, h, s, v) {
+  document.getElementById('r-slider').style.background =
+    `linear-gradient(to right, rgb(0,${g},${b}), rgb(255,${g},${b}))`;
+  document.getElementById('g-slider').style.background =
+    `linear-gradient(to right, rgb(${r},0,${b}), rgb(${r},255,${b}))`;
+  document.getElementById('b-slider').style.background =
+    `linear-gradient(to right, rgb(${r},${g},0), rgb(${r},${g},255))`;
+  document.getElementById('s-slider').style.background =
+    `linear-gradient(to right, hsl(${h},0%,${v / 2}%), hsl(${h},100%,${v / 2}%))`;
+  document.getElementById('v-slider').style.background =
+    `linear-gradient(to right, #000, hsl(${h},100%,50%))`;
+}
+
+// ── HSV ↔ Hex helpers ──────────────────────────────────
+function hexToHsv(hex6) {
+  const r = parseInt(hex6.slice(1, 3), 16) / 255;
+  const g = parseInt(hex6.slice(3, 5), 16) / 255;
+  const b = parseInt(hex6.slice(5, 7), 16) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+  let h = 0;
+  if (d > 0) {
+    if (max === r) h = ((g - b) / d + 6) % 6;
+    else if (max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+    h *= 60;
+  }
+  return { h, s: max === 0 ? 0 : d / max * 100, v: max * 100 };
+}
+
+function hsvToHex(h, s, v) {
+  s /= 100; v /= 100;
+  const c = v * s, x = c * (1 - Math.abs((h / 60) % 2 - 1)), m = v - c;
+  let r = 0, g = 0, b = 0;
+  if      (h < 60)  [r, g, b] = [c, x, 0];
+  else if (h < 120) [r, g, b] = [x, c, 0];
+  else if (h < 180) [r, g, b] = [0, c, x];
+  else if (h < 240) [r, g, b] = [0, x, c];
+  else if (h < 300) [r, g, b] = [x, 0, c];
+  else              [r, g, b] = [c, 0, x];
+  const rr = Math.round((r + m) * 255), gg = Math.round((g + m) * 255), bb = Math.round((b + m) * 255);
+  return '#' + rr.toString(16).padStart(2, '0') + gg.toString(16).padStart(2, '0') + bb.toString(16).padStart(2, '0');
+}
+
+// ── Adjust (relative HSV) ──────────────────────────────
+function initAdjust() {
+  const snapIfNeeded = () => {
+    if (state.selectedCells.length > 0 && state.activeWindow)
+      state.activeWindow._snapshotBefore();
+  };
+
+  ['dh', 'ds', 'dv'].forEach(id => {
+    const slider = document.getElementById(`${id}-slider`);
+    const input  = document.getElementById(`${id}-input`);
+    slider.addEventListener('mousedown', snapIfNeeded);
+    slider.addEventListener('input', () => {
+      input.value = slider.value;
+      applyAdjust();
+    });
+    input.addEventListener('mousedown', e => e.stopPropagation());
+    input.addEventListener('change', () => {
+      const min = parseInt(input.min), max = parseInt(input.max);
+      const val = clamp(parseInt(input.value) || 0, min, max);
+      input.value = val;
+      slider.value = val;
+      snapIfNeeded();
+      applyAdjust();
+    });
+  });
+
+  document.getElementById('adjust-reset-btn').addEventListener('click', resetAdjust);
+}
+
+function captureAdjustOrigins() {
+  // Add entries for cells not yet tracked (preserves already-tracked cells)
+  for (const { win, row, col } of state.selectedCells) {
+    const key = `${win.id}-${row}-${col}`;
+    if (!state.adjustOrigins[key]) {
+      state.adjustOrigins[key] = win.getColor(row, col);
+    }
+  }
+}
+
+function applyAdjust() {
+  const dh = parseInt(document.getElementById('dh-slider').value) || 0;
+  const ds = parseInt(document.getElementById('ds-slider').value) || 0;
+  const dv = parseInt(document.getElementById('dv-slider').value) || 0;
+
+  for (const { win, row, col } of state.selectedCells) {
+    const orig = state.adjustOrigins[`${win.id}-${row}-${col}`];
+    if (!orig) continue;
+    const hsv = hexToHsv(orig);
+    const nh = ((hsv.h + dh) % 360 + 360) % 360;
+    const ns = clamp(hsv.s + ds, 0, 100);
+    const nv = clamp(hsv.v + dv, 0, 100);
+    win.setColor(row, col, hsvToHex(nh, ns, nv));
+  }
+  if (state.selectedCells.length > 0) {
+    const { win, row, col } = state.selectedCells[0];
+    setPickerColor(win.getColor(row, col));
+  }
+  scheduleSaveActive();
+}
+
+function resetAdjust() {
+  ['dh', 'ds', 'dv'].forEach(id => {
+    document.getElementById(`${id}-slider`).value = 0;
+    document.getElementById(`${id}-input`).value  = 0;
+  });
+  for (const { win, row, col } of state.selectedCells) {
+    const orig = state.adjustOrigins[`${win.id}-${row}-${col}`];
+    if (orig) win.setColor(row, col, orig);
+  }
+  if (state.selectedCells.length > 0) {
+    const { win, row, col } = state.selectedCells[0];
+    setPickerColor(win.getColor(row, col));
+  }
+  scheduleSaveActive();
 }
 
 // ── Utilities ──────────────────────────────────────────

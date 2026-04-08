@@ -321,7 +321,7 @@ button:active {
   position: fixed;
   top: 60px;
   right: 16px;
-  width: 240px;
+  width: 250px;
   background: var(--bg2);
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -369,71 +369,11 @@ button:active {
   justify-content: center;
 }
 
-/* Hue slider row */
-.hue-slider-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 10px 8px;
-}
-
-.hue-label {
-  font-size: 11px;
-  color: var(--text-dim);
-  width: 14px;
-  flex-shrink: 0;
-}
-
-.hue-value {
-  font-size: 11px;
-  color: var(--text-dim);
-  width: 26px;
-  text-align: right;
-  flex-shrink: 0;
-  font-family: monospace;
-}
-
-.hue-slider {
-  flex: 1;
-  -webkit-appearance: none;
-  appearance: none;
-  height: 14px;
-  border-radius: 7px;
-  background: linear-gradient(to right,
-    hsl(0,100%,50%), hsl(30,100%,50%), hsl(60,100%,50%),
-    hsl(90,100%,50%), hsl(120,100%,50%), hsl(150,100%,50%),
-    hsl(180,100%,50%), hsl(210,100%,50%), hsl(240,100%,50%),
-    hsl(270,100%,50%), hsl(300,100%,50%), hsl(330,100%,50%),
-    hsl(360,100%,50%));
-  cursor: pointer;
-  border: 1px solid var(--border);
-  outline: none;
-}
-.hue-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: #fff;
-  border: 2px solid #555;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.5);
-  cursor: pointer;
-}
-.hue-slider::-moz-range-thumb {
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: #fff;
-  border: 2px solid #555;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.5);
-  cursor: pointer;
-}
-
 .color-inputs {
   padding: 0 10px 8px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 5px;
 }
 
 .input-row {
@@ -461,21 +401,106 @@ button:active {
   width: 100%;
 }
 
-.input-row input[type="number"] {
+.input-row input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+/* Channel slider rows (R/G/B/H/S/V) */
+.slider-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.slider-label {
+  font-size: 11px;
+  color: var(--text-dim);
+  width: 20px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.channel-slider {
   flex: 1;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 12px;
+  border-radius: 6px;
+  background: linear-gradient(to right, #333, #888);
+  cursor: pointer;
+  border: 1px solid var(--border);
+  outline: none;
+  min-width: 0;
+}
+.channel-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid #555;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.6);
+  cursor: pointer;
+}
+.channel-slider::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid #555;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.6);
+  cursor: pointer;
+}
+
+.hue-track {
+  background: linear-gradient(to right,
+    hsl(0,100%,50%), hsl(30,100%,50%), hsl(60,100%,50%),
+    hsl(90,100%,50%), hsl(120,100%,50%), hsl(150,100%,50%),
+    hsl(180,100%,50%), hsl(210,100%,50%), hsl(240,100%,50%),
+    hsl(270,100%,50%), hsl(300,100%,50%), hsl(330,100%,50%),
+    hsl(360,100%,50%)) !important;
+}
+
+.channel-num {
+  width: 42px;
+  flex-shrink: 0;
   background: var(--bg3);
   border: 1px solid var(--border);
   color: var(--text);
   border-radius: 3px;
-  padding: 3px 4px;
-  font-size: 12px;
-  width: 52px;
-  min-width: 0;
+  padding: 2px 4px;
+  font-size: 11px;
+  text-align: right;
+  outline: none;
+}
+.channel-num:focus { border-color: var(--accent); }
+
+/* Adjust section */
+.adjust-section {
+  border-top: 1px solid var(--border);
+  padding: 6px 10px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
 }
 
-.input-row input:focus {
-  border-color: var(--accent);
-  outline: none;
+.adjust-header {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent2);
+  margin-bottom: 2px;
+}
+
+.adjust-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 2px;
+}
+
+.adjust-actions button {
+  font-size: 11px;
+  padding: 3px 10px;
 }
 
 .picker-actions {

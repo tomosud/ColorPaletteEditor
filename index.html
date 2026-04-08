@@ -32,36 +32,66 @@
       <button id="picker-close-btn" class="picker-close-btn">✕</button>
     </div>
     <div id="iro-picker"></div>
-    <div class="hue-slider-row">
-      <label class="hue-label">H</label>
-      <input type="range" id="hue-slider" min="0" max="360" value="0" class="hue-slider">
-      <span id="hue-value" class="hue-value">0</span>
-    </div>
     <div class="color-inputs">
       <div class="input-row">
         <label>Hex</label>
         <input type="text" id="hex-input" maxlength="7" placeholder="#ffffff">
       </div>
-      <div class="input-row">
-        <label>R</label>
-        <input type="number" id="r-input" min="0" max="255">
-        <label>G</label>
-        <input type="number" id="g-input" min="0" max="255">
-        <label>B</label>
-        <input type="number" id="b-input" min="0" max="255">
+      <div class="slider-row">
+        <label class="slider-label">R</label>
+        <input type="range" id="r-slider" min="0" max="255" value="128" class="channel-slider">
+        <input type="number" id="r-input" min="0" max="255" class="channel-num">
       </div>
-      <div class="input-row">
-        <label>H</label>
-        <input type="number" id="h-input" min="0" max="360">
-        <label>S</label>
-        <input type="number" id="s-input" min="0" max="100">
-        <label>V</label>
-        <input type="number" id="v-input" min="0" max="100">
+      <div class="slider-row">
+        <label class="slider-label">G</label>
+        <input type="range" id="g-slider" min="0" max="255" value="128" class="channel-slider">
+        <input type="number" id="g-input" min="0" max="255" class="channel-num">
+      </div>
+      <div class="slider-row">
+        <label class="slider-label">B</label>
+        <input type="range" id="b-slider" min="0" max="255" value="128" class="channel-slider">
+        <input type="number" id="b-input" min="0" max="255" class="channel-num">
+      </div>
+      <div class="slider-row">
+        <label class="slider-label">H</label>
+        <input type="range" id="h-slider" min="0" max="360" value="0" class="channel-slider hue-track">
+        <input type="number" id="h-input" min="0" max="360" class="channel-num">
+      </div>
+      <div class="slider-row">
+        <label class="slider-label">S</label>
+        <input type="range" id="s-slider" min="0" max="100" value="0" class="channel-slider">
+        <input type="number" id="s-input" min="0" max="100" class="channel-num">
+      </div>
+      <div class="slider-row">
+        <label class="slider-label">V</label>
+        <input type="range" id="v-slider" min="0" max="100" value="50" class="channel-slider">
+        <input type="number" id="v-input" min="0" max="100" class="channel-num">
       </div>
     </div>
     <div class="picker-actions">
       <button id="copy-color-btn">Copy</button>
       <button id="paste-color-btn">Paste</button>
+    </div>
+    <div class="adjust-section">
+      <div class="adjust-header">Adjust</div>
+      <div class="slider-row">
+        <label class="slider-label">dH</label>
+        <input type="range" id="dh-slider" min="-180" max="180" value="0" class="channel-slider">
+        <input type="number" id="dh-input" min="-180" max="180" value="0" class="channel-num">
+      </div>
+      <div class="slider-row">
+        <label class="slider-label">dS</label>
+        <input type="range" id="ds-slider" min="-100" max="100" value="0" class="channel-slider">
+        <input type="number" id="ds-input" min="-100" max="100" value="0" class="channel-num">
+      </div>
+      <div class="slider-row">
+        <label class="slider-label">dV</label>
+        <input type="range" id="dv-slider" min="-100" max="100" value="0" class="channel-slider">
+        <input type="number" id="dv-input" min="-100" max="100" value="0" class="channel-num">
+      </div>
+      <div class="adjust-actions">
+        <button id="adjust-reset-btn">Reset</button>
+      </div>
     </div>
   </div>
 
