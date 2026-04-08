@@ -480,6 +480,8 @@ async function refreshFolderFiles() {
 async function openFolderEntry(entry) {
   const file = await entry.getFile();
   const baseName = file.name.replace(/\.[^.]+$/, '');
+  const existing = state.windows.find(w => w.name === baseName);
+  if (existing) { existing._activate(); return; }
   if (file.name.endsWith('.json')) {
     handleJsonDrop(file, baseName);
   } else {
