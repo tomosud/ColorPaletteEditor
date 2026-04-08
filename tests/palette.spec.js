@@ -4,127 +4,105 @@ test.describe('Color Palette Editor', () => {
 
   test.beforeEach(async ({ page }) => {
     await page.goto('/index.html');
-    // Wait for iro.js to load and formats to fetch
     await page.waitForFunction(() => typeof iro !== 'undefined');
-    await page.waitForFunction(() => Object.keys(state.formats).length > 0);
+    await page.waitForFunction(() => state.dbReady === true, { timeout: 10000 });
   });
 
   // ── 1. Format loading ───────────────────────────────
-  test('loads Landscape format', async ({ page }) => {
+  test('loads formats', async ({ page }) => {
     const options = await page.locator('#format-select option').allTextContents();
     expect(options).toContain('Landscape');
+    expect(options).toContain('colorPalette16');
+    expect(options).toContain('Leaves');
+    expect(options).toContain('Grass');
   });
 
   // ── 2. New palette window ───────────────────────────
-  test('creates palette window with correct grid', async ({ page }) => {
+  test('creates Landscape window with 32 cells', async ({ page }) => {
     await page.selectOption('#format-select', 'Landscape');
     await page.click('#new-palette-btn');
 
     const win = page.locator('.palette-window');
     await expect(win).toBeVisible();
-
-    // Landscape: 16 cols × 2 rows = 32 cells
-    const cells = win.locator('.pixel-cell');
-    await expect(cells).toHaveCount(32);
+    await expect(win.locator('.pixel-cell')).toHaveCount(32);
 
     // Row labels
     await expect(win.locator('.row-label').first()).toHaveText('BC');
     await expect(win.locator('.row-label').nth(1)).toHaveText('Shadow');
 
-    // Column group labels
+    // Col group labels
     const colLabels = await win.locator('.col-group-row th:not(.row-label-spacer)').allTextContents();
     expect(colLabels).toEqual(['Road', 'Grass', 'Soil_Upper', 'Soil_Bottom']);
   });
 
-  // ── 3. Cell click → picker opens, cell selected ─────
-  test('clicking a cell opens color picker and marks cell selected', async ({ page }) => {
+  // ── 3. colorPalette16 row groups ───────────────────
+  test('colorPalette16 has row groups and 128 cells', async ({ page }) => {
+    await page.selectOption('#format-select', 'colorPalette16');
+    await page.click('#new-palette-btn');
+
+    const win = page.locator('.palette-window');
+    await expect(win.locator('.pixel-cell')).toHaveCount(128); // 16 cols × 8 rows
+
+    const groupLabels = await win.locator('.row-group-label').allTextContents();
+    expect(groupLabels).toEqual(['Spring', 'Summer', 'Autumn', 'Winter']);
+  });
+
+  // ── 4. Cell click → picker opens, cell selected ────
+  test('clicking a cell opens picker and selects it', async ({ page }) => {
     await page.selectOption('#format-select', 'Landscape');
     await page.click('#new-palette-btn');
 
-    const firstCell = page.locator('.pixel-cell').first();
-    await firstCell.click();
+    await page.locator('.pixel-cell[data-row="0"][data-col="0"]').click();
 
-    // Picker panel should be visible
     await expect(page.locator('#color-picker-panel')).toBeVisible();
+    await expect(page.locator('.pixel-cell[data-row="0"][data-col="0"]')).toHaveClass(/selected/);
 
-    // Cell should have .selected class
-    await expect(firstCell).toHaveClass(/selected/);
-
-    // state.selectedCells should have 1 entry
     const selCount = await page.evaluate(() => state.selectedCells.length);
     expect(selCount).toBe(1);
   });
 
-  // ── 4. Color change via JS → cell background updates ─
-  test('setting color via state API updates cell background', async ({ page }) => {
-    await page.selectOption('#format-select', 'Landscape');
-    await page.click('#new-palette-btn');
-
-    // Click cell (row=0, col=0)
-    await page.locator('.pixel-cell[data-row="0"][data-col="0"]').click();
-
-    // Directly set the picker color (simulates dragging the picker)
-    await page.evaluate(() => {
-      setPickerColor('#ff0000ff');
-    });
-
-    // Check pixel stored in state
-    const storedColor = await page.evaluate(() =>
-      state.windows[0].getColor(0, 0)
-    );
-    // setPickerColor does NOT apply to cells (it only sets picker UI)
-    // applyColorToSelected is triggered by color:change event
-    // So we need to trigger color change
-    console.log('Stored color after setPickerColor:', storedColor);
-
-    // Simulate iro color:change by directly calling applyColorToSelected
-    await page.evaluate(() => {
-      applyColorToSelected('#ff0000ff');
-    });
-
-    const storedAfter = await page.evaluate(() =>
-      state.windows[0].getColor(0, 0)
-    );
-    expect(storedAfter).toBe('#ff0000ff');
-
-    // Check DOM background
-    const bg = await page.locator('.pixel-cell[data-row="0"][data-col="0"]').evaluate(el => el.style.background);
-    console.log('Cell background:', bg);
-    expect(bg).toMatch(/255.*0.*0/); // red channel = 255
-  });
-
-  // ── 5. color:change handler updates selected cells ───
-  test('iro color:change event updates selected cell', async ({ page }) => {
+  // ── 5. iro color:change updates selected cell ───────
+  test('iro color:change updates selected cell', async ({ page }) => {
     await page.selectOption('#format-select', 'Landscape');
     await page.click('#new-palette-btn');
 
     await page.locator('.pixel-cell[data-row="0"][data-col="0"]').click();
 
-    // Verify cell is selected
-    const selCount = await page.evaluate(() => state.selectedCells.length);
-    expect(selCount).toBe(1);
-
-    // Simulate what iro does: fire color:change by setting color programmatically
-    // (this goes through the real event handler)
     await page.evaluate(() => {
-      state._pickerChanging = false; // ensure not suppressed
-      state.colorPicker.color.set({ r: 255, g: 0, b: 0, a: 1 });
+      state._pickerChanging = false;
+      state.colorPicker.color.set({ r: 255, g: 0, b: 0 });
     });
+    await page.waitForTimeout(50);
 
-    // After setting, color:change fires → applyColorToSelected → win.setColor
-    await page.waitForTimeout(50); // small wait for event propagation
-
-    const storedColor = await page.evaluate(() => state.windows[0].getColor(0, 0));
-    console.log('Color after picker.color.set():', storedColor);
-    expect(storedColor).toMatch(/^#ff0000/);
+    const stored = await page.evaluate(() => state.windows[0].getColor(0, 0));
+    expect(stored).toMatch(/^#ff0000/);
 
     const bg = await page.locator('.pixel-cell[data-row="0"][data-col="0"]').evaluate(el => el.style.background);
-    console.log('Cell DOM background:', bg);
     expect(bg).toMatch(/255.*0.*0/);
   });
 
-  // ── 6. Shift-click multi-select ─────────────────────
-  test('shift-click selects multiple cells', async ({ page }) => {
+  // ── 6. Area drag selection ──────────────────────────
+  test('drag selects a rectangle of cells', async ({ page }) => {
+    await page.selectOption('#format-select', 'Landscape');
+    await page.click('#new-palette-btn');
+
+    // Simulate drag from (0,0) to (1,2) via mousedown + mousemove + mouseup
+    const cell00 = page.locator('.pixel-cell[data-row="0"][data-col="0"]');
+    const cell12 = page.locator('.pixel-cell[data-row="1"][data-col="2"]');
+    const box00  = await cell00.boundingBox();
+    const box12  = await cell12.boundingBox();
+
+    await page.mouse.move(box00.x + 5, box00.y + 5);
+    await page.mouse.down();
+    await page.mouse.move(box12.x + 5, box12.y + 5);
+    await page.mouse.up();
+
+    const selCount = await page.evaluate(() => state.selectedCells.length);
+    expect(selCount).toBe(6); // 2 rows × 3 cols
+  });
+
+  // ── 7. Shift-click adds to selection ───────────────
+  test('shift-click adds cells to selection', async ({ page }) => {
     await page.selectOption('#format-select', 'Landscape');
     await page.click('#new-palette-btn');
 
@@ -136,60 +114,45 @@ test.describe('Color Palette Editor', () => {
     expect(selCount).toBe(3);
   });
 
-  // ── 7. Copy / Paste ──────────────────────────────────
-  test('copy and paste color between cells', async ({ page }) => {
+  // ── 8. Copy / Paste ─────────────────────────────────
+  test('copy and paste color', async ({ page }) => {
     await page.selectOption('#format-select', 'Landscape');
     await page.click('#new-palette-btn');
 
-    // Set cell 0,0 to red
     await page.locator('.pixel-cell[data-row="0"][data-col="0"]').click();
     await page.evaluate(() => {
       state._pickerChanging = false;
-      state.colorPicker.color.set({ r: 200, g: 50, b: 50, a: 1 });
+      state.colorPicker.color.set({ r: 200, g: 50, b: 50 });
     });
     await page.waitForTimeout(30);
 
-    // Copy
     await page.click('#copy-color-btn');
-    const clipboard = await page.evaluate(() => state.clipboard);
-    expect(clipboard).not.toBeNull();
 
-    // Click cell 1,1 and paste
     await page.locator('.pixel-cell[data-row="1"][data-col="1"]').click();
     await page.click('#paste-color-btn');
 
-    const pastedColor = await page.evaluate(() => state.windows[0].getColor(1, 1));
-    console.log('Pasted color:', pastedColor);
-    expect(pastedColor).toMatch(/^#c83232|^#c83232/); // rgb(200,50,50)
+    const pasted = await page.evaluate(() => state.windows[0].getColor(1, 1));
+    expect(pasted).toMatch(/^#c83232/);
   });
 
-  // ── 8. Multiple windows ──────────────────────────────
-  test('can open multiple palette windows independently', async ({ page }) => {
-    await page.selectOption('#format-select', 'Landscape');
-    await page.click('#new-palette-btn');
-    await page.click('#new-palette-btn');
-
-    const wins = page.locator('.palette-window');
-    await expect(wins).toHaveCount(2);
-
-    const winCount = await page.evaluate(() => state.windows.length);
-    expect(winCount).toBe(2);
-  });
-
-  // ── 9. Close window ──────────────────────────────────
-  test('closing a window removes it', async ({ page }) => {
+  // ── 9. Custom window name ───────────────────────────
+  test('window name is editable', async ({ page }) => {
     await page.selectOption('#format-select', 'Landscape');
     await page.click('#new-palette-btn');
 
-    await page.locator('.window-close-btn').click();
+    const nameInput = page.locator('.window-name-input').first();
+    await expect(nameInput).toHaveValue('Landscape');
 
-    await expect(page.locator('.palette-window')).toHaveCount(0);
-    const winCount = await page.evaluate(() => state.windows.length);
-    expect(winCount).toBe(0);
+    await nameInput.fill('MyPalette');
+    await nameInput.press('Enter');
+    await page.waitForTimeout(500); // debounce
+
+    const name = await page.evaluate(() => state.windows[0].name);
+    expect(name).toBe('MyPalette');
   });
 
-  // ── 10. PNG download contains metadata ───────────────
-  test('PNG export encodes pixel data in tEXt chunk', async ({ page }) => {
+  // ── 10. IndexedDB persistence ───────────────────────
+  test('palette persists after reload', async ({ page }) => {
     await page.selectOption('#format-select', 'Landscape');
     await page.click('#new-palette-btn');
 
@@ -197,30 +160,69 @@ test.describe('Color Palette Editor', () => {
     await page.locator('.pixel-cell[data-row="0"][data-col="0"]').click();
     await page.evaluate(() => {
       state._pickerChanging = false;
-      state.colorPicker.color.set({ r: 123, g: 45, b: 67, a: 1 });
+      state.colorPicker.color.set({ r: 42, g: 137, b: 200 });
     });
-    await page.waitForTimeout(30);
+    await page.waitForTimeout(600); // wait for debounced save
 
-    // Call downloadPng() but intercept instead of actually downloading
+    // Reload
+    await page.reload();
+    await page.waitForFunction(() => state.dbReady === true, { timeout: 10000 });
+
+    // Window should be restored
+    const winCount = await page.evaluate(() => state.windows.length);
+    expect(winCount).toBeGreaterThan(0);
+
+    const color = await page.evaluate(() => state.windows[0].getColor(0, 0));
+    expect(color).toMatch(/^#2a89c8/);
+  });
+
+  // ── 11. Multiple windows ─────────────────────────────
+  test('multiple windows are independent', async ({ page }) => {
+    await page.selectOption('#format-select', 'Landscape');
+    await page.click('#new-palette-btn');
+    await page.click('#new-palette-btn');
+
+    await expect(page.locator('.palette-window')).toHaveCount(2);
+    expect(await page.evaluate(() => state.windows.length)).toBe(2);
+  });
+
+  // ── 12. Close window ────────────────────────────────
+  test('closing a window removes it from DB', async ({ page }) => {
+    await page.selectOption('#format-select', 'Landscape');
+    await page.click('#new-palette-btn');
+    const id = await page.evaluate(() => state.windows[0].id);
+
+    await page.locator('.window-close-btn').click();
+    await expect(page.locator('.palette-window')).toHaveCount(0);
+
+    // Reload - window should not come back
+    await page.reload();
+    await page.waitForFunction(() => state.dbReady === true, { timeout: 10000 });
+    expect(await page.evaluate(() => state.windows.length)).toBe(0);
+  });
+
+  // ── 13. PNG export with metadata ───────────────────
+  test('PNG export contains CPE_DATA chunk', async ({ page }) => {
+    await page.selectOption('#format-select', 'Landscape');
+    await page.click('#new-palette-btn');
+
     const result = await page.evaluate(async () => {
       const win = state.windows[0];
       const { width, height } = win.format;
       const canvas = document.createElement('canvas');
       canvas.width = width; canvas.height = height;
       const ctx = canvas.getContext('2d');
-      for (let r = 0; r < height; r++) {
+      for (let r = 0; r < height; r++)
         for (let c = 0; c < width; c++) {
-          ctx.fillStyle = hex8ToCSS(win.pixels[r][c]);
+          ctx.fillStyle = win.pixels[r][c] ?? '#808080';
           ctx.fillRect(c, r, 1, 1);
         }
-      }
       return new Promise(resolve => {
         canvas.toBlob(blob => {
           blob.arrayBuffer().then(buf => {
-            const metadata = JSON.stringify({ format: win.format, pixels: win.pixels });
-            const pngWithMeta = injectPngText(buf, 'CPE_DATA', metadata);
-            const extracted = extractPngText(pngWithMeta.buffer, 'CPE_DATA');
-            resolve(extracted);
+            const meta = JSON.stringify({ id: win.id, name: win.name, format: win.format, pixels: win.pixels });
+            const png  = injectPngText(buf, 'CPE_DATA', meta);
+            resolve(extractPngText(png.buffer, 'CPE_DATA'));
           });
         }, 'image/png');
       });
@@ -229,7 +231,29 @@ test.describe('Color Palette Editor', () => {
     expect(result).not.toBeNull();
     const parsed = JSON.parse(result);
     expect(parsed.format.name).toBe('Landscape');
-    expect(parsed.pixels).toBeDefined();
+    expect(parsed.id).toBeTruthy();
+    expect(parsed.name).toBeTruthy();
+  });
+
+  // ── 14. HSV inputs sync ─────────────────────────────
+  test('HSV inputs are synced when picker changes', async ({ page }) => {
+    await page.selectOption('#format-select', 'Landscape');
+    await page.click('#new-palette-btn');
+    await page.locator('.pixel-cell[data-row="0"][data-col="0"]').click();
+
+    // Set a known color
+    await page.evaluate(() => {
+      state._pickerChanging = false;
+      state.colorPicker.color.set({ h: 120, s: 100, v: 50 }); // pure green half-value
+    });
+    await page.waitForTimeout(50);
+
+    const h = await page.locator('#h-input').inputValue();
+    const s = await page.locator('#s-input').inputValue();
+    const v = await page.locator('#v-input').inputValue();
+    expect(parseInt(h)).toBeCloseTo(120, -1);
+    expect(parseInt(s)).toBe(100);
+    expect(parseInt(v)).toBe(50);
   });
 
 });

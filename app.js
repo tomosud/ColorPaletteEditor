@@ -4,28 +4,90 @@
 
 // ── State ──────────────────────────────────────────────
 const state = {
-  formats: {},          // name → format object
-  windows: [],          // list of PaletteWindow instances
+  formats: {},
+  windows: [],
   activeWindow: null,
-  selectedCells: [],    // [{win, row, col}]
-  clipboard: null,      // [{row, col, color}]
-  colorPicker: null,    // iro.ColorPicker instance
-  pickerTarget: null,   // current cells being edited
+  selectedCells: [],   // [{win, row, col}]
+  clipboard: null,     // [{row, col, color}]
+  colorPicker: null,
+  _pickerChanging: false,
+  dragState: null,     // {win, startRow, startCol, baseSelection}
+  db: null,
+  dbReady: false,
 };
 
 // ── Init ───────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
-  await loadFormats();
+  await Promise.all([loadFormats(), initDB()]);
   initColorPicker();
   initUI();
   initDrop();
+  initDragSelection();
+  await loadSavedPalettes();
+  state.dbReady = true;
 });
+
+// ── IndexedDB ──────────────────────────────────────────
+const DB_NAME = 'ColorPaletteEditor';
+const DB_VER  = 1;
+const STORE   = 'palettes';
+
+function initDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VER);
+    req.onupgradeneeded = e => {
+      e.target.result.createObjectStore(STORE, { keyPath: 'id' });
+    };
+    req.onsuccess = e => { state.db = e.target.result; resolve(); };
+    req.onerror   = e => { console.error('DB open failed', e); resolve(); };
+  });
+}
+
+function dbSave(record) {
+  if (!state.db) return;
+  const tx = state.db.transaction(STORE, 'readwrite');
+  tx.objectStore(STORE).put(record);
+}
+
+function dbDelete(id) {
+  if (!state.db) return;
+  const tx = state.db.transaction(STORE, 'readwrite');
+  tx.objectStore(STORE).delete(id);
+}
+
+function dbLoadAll() {
+  return new Promise((resolve) => {
+    if (!state.db) return resolve([]);
+    const tx  = state.db.transaction(STORE, 'readonly');
+    const req = tx.objectStore(STORE).getAll();
+    req.onsuccess = e => resolve(e.target.result);
+    req.onerror   = () => resolve([]);
+  });
+}
+
+async function loadSavedPalettes() {
+  const records = await dbLoadAll();
+  for (const rec of records) {
+    new PaletteWindow(rec.format, rec.pixels, {
+      id:       rec.id,
+      name:     rec.name,
+      position: rec.position,
+    });
+  }
+}
+
+// ── UUID ───────────────────────────────────────────────
+function generateId() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0;
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+  });
+}
 
 // ── Load Formats ───────────────────────────────────────
 async function loadFormats() {
   const formatFiles = ['landscape.json', 'colorPalette16.json', 'leaves.json', 'grass.json'];
   const select = document.getElementById('format-select');
-
   for (const file of formatFiles) {
     try {
       const res = await fetch(`format/${file}`);
@@ -50,23 +112,20 @@ function initColorPicker() {
     layout: [
       { component: iro.ui.Box },
       { component: iro.ui.Slider, options: { sliderType: 'hue' } },
-      { component: iro.ui.Slider, options: { sliderType: 'alpha' } },
     ],
   });
 
-  // Single named handler — never removed/re-added
-  state._pickerChanging = false;
   state.colorPicker.on('color:change', (color) => {
     if (state._pickerChanging) return;
     syncPickerToInputs(color);
-    applyColorToSelected(colorToHex8(color));
+    applyColorToSelected(colorToHex6(color));
   });
 
   document.getElementById('hex-input').addEventListener('change', onHexInput);
-  document.getElementById('r-input').addEventListener('change', onRGBInput);
-  document.getElementById('g-input').addEventListener('change', onRGBInput);
-  document.getElementById('b-input').addEventListener('change', onRGBInput);
-  document.getElementById('a-input').addEventListener('change', onRGBInput);
+  ['r-input', 'g-input', 'b-input'].forEach(id =>
+    document.getElementById(id).addEventListener('change', onRGBInput));
+  ['h-input', 's-input', 'v-input'].forEach(id =>
+    document.getElementById(id).addEventListener('change', onHSVInput));
 
   document.getElementById('picker-close-btn').addEventListener('click', () => {
     document.getElementById('color-picker-panel').classList.add('hidden');
@@ -76,64 +135,70 @@ function initColorPicker() {
   document.getElementById('paste-color-btn').addEventListener('click', pasteColor);
 }
 
-// Read hex8 from iro color safely
-function colorToHex8(color) {
-  const r = color.red.toString(16).padStart(2, '0');
-  const g = color.green.toString(16).padStart(2, '0');
-  const b = color.blue.toString(16).padStart(2, '0');
-  const a = Math.round(color.alpha * 255).toString(16).padStart(2, '0');
-  return `#${r}${g}${b}${a}`;
+function syncPickerToInputs(color) {
+  document.getElementById('hex-input').value = color.hexString;
+  document.getElementById('r-input').value   = color.red;
+  document.getElementById('g-input').value   = color.green;
+  document.getElementById('b-input').value   = color.blue;
+  const hsv = color.hsv;
+  document.getElementById('h-input').value   = Math.round(hsv.h);
+  document.getElementById('s-input').value   = Math.round(hsv.s);
+  document.getElementById('v-input').value   = Math.round(hsv.v);
 }
 
-// Set iro color from hex8 string without triggering applyColorToSelected
-function setPickerColor(hex8) {
+function setPickerColor(hex6) {
+  if (!hex6 || hex6.length < 7) return;
   state._pickerChanging = true;
-  const rgba = hex8ToRgba(hex8);
-  state.colorPicker.color.set({ r: rgba.r, g: rgba.g, b: rgba.b, a: rgba.a / 255 });
+  const r = parseInt(hex6.slice(1, 3), 16);
+  const g = parseInt(hex6.slice(3, 5), 16);
+  const b = parseInt(hex6.slice(5, 7), 16);
+  state.colorPicker.color.set({ r, g, b });
   syncPickerToInputs(state.colorPicker.color);
   state._pickerChanging = false;
 }
 
-function syncPickerToInputs(color) {
-  document.getElementById('hex-input').value = color.hexString;
-  document.getElementById('r-input').value = color.red;
-  document.getElementById('g-input').value = color.green;
-  document.getElementById('b-input').value = color.blue;
-  document.getElementById('a-input').value = Math.round(color.alpha * 255);
+function colorToHex6(color) {
+  return '#' +
+    color.red  .toString(16).padStart(2, '0') +
+    color.green.toString(16).padStart(2, '0') +
+    color.blue .toString(16).padStart(2, '0');
 }
 
 function onHexInput(e) {
   let v = e.target.value.trim();
   if (!v.startsWith('#')) v = '#' + v;
   if (/^#[0-9a-fA-F]{6}$/.test(v)) {
+    state._pickerChanging = false; // let change:event propagate
     state.colorPicker.color.hexString = v;
   }
 }
 
 function onRGBInput() {
-  const r = parseInt(document.getElementById('r-input').value) || 0;
-  const g = parseInt(document.getElementById('g-input').value) || 0;
-  const b = parseInt(document.getElementById('b-input').value) || 0;
-  const a = parseInt(document.getElementById('a-input').value);
-  const alpha = isNaN(a) ? 1 : a / 255;
-  state.colorPicker.color.set({ r, g, b, a: alpha });
+  const r = clamp(parseInt(document.getElementById('r-input').value) || 0, 0, 255);
+  const g = clamp(parseInt(document.getElementById('g-input').value) || 0, 0, 255);
+  const b = clamp(parseInt(document.getElementById('b-input').value) || 0, 0, 255);
+  state.colorPicker.color.set({ r, g, b });
 }
 
-function applyColorToSelected(hex8) {
+function onHSVInput() {
+  const h = clamp(parseInt(document.getElementById('h-input').value) || 0, 0, 360);
+  const s = clamp(parseInt(document.getElementById('s-input').value) || 0, 0, 100);
+  const v = clamp(parseInt(document.getElementById('v-input').value) || 0, 0, 100);
+  state.colorPicker.color.set({ h, s, v });
+}
+
+function applyColorToSelected(hex6) {
   for (const { win, row, col } of state.selectedCells) {
-    win.setColor(row, col, hex8);
+    win.setColor(row, col, hex6);
   }
+  scheduleSaveActive();
 }
 
 function showPickerForCells(cells) {
-  state.pickerTarget = cells;
-  const panel = document.getElementById('color-picker-panel');
-  panel.classList.remove('hidden');
-
-  if (cells.length > 0) {
-    const { win, row, col } = cells[0];
-    setPickerColor(win.getColor(row, col));
-  }
+  if (cells.length === 0) return;
+  document.getElementById('color-picker-panel').classList.remove('hidden');
+  const { win, row, col } = cells[0];
+  setPickerColor(win.getColor(row, col));
 }
 
 // ── Copy / Paste ───────────────────────────────────────
@@ -146,23 +211,84 @@ function copyColor() {
 
 function pasteColor() {
   if (!state.clipboard || state.selectedCells.length === 0) return;
+  // Paste first clipboard color to all selected cells
   const src = state.clipboard[0].color;
   for (const { win, row, col } of state.selectedCells) {
     win.setColor(row, col, src);
-    win.refreshCell(row, col);
   }
-  if (state.selectedCells.length > 0) {
-    setPickerColor(src);
-  }
+  setPickerColor(src);
+  scheduleSaveActive();
 }
 
-// keyboard shortcuts
 document.addEventListener('keydown', (e) => {
+  const tag = document.activeElement?.tagName;
+  if (tag === 'INPUT') return; // don't intercept when typing
   if (e.ctrlKey && e.key === 'c') copyColor();
   if (e.ctrlKey && e.key === 'v') pasteColor();
 });
 
+// ── Drag Area Selection ────────────────────────────────
+function initDragSelection() {
+  document.addEventListener('mousemove', (e) => {
+    if (!state.dragState) return;
+    const el   = document.elementFromPoint(e.clientX, e.clientY);
+    const cell = el?.closest?.('.pixel-cell');
+    if (!cell || !state.dragState.win.el.contains(cell)) return;
+
+    const endRow = parseInt(cell.dataset.row);
+    const endCol = parseInt(cell.dataset.col);
+    const { win, startRow, startCol, baseSelection } = state.dragState;
+
+    const rect = computeRectCells(win, startRow, startCol, endRow, endCol);
+    const merged = mergeSelections(baseSelection, rect);
+    applySelectionVisual(merged);
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (!state.dragState) return;
+    state.dragState = null;
+    if (state.selectedCells.length > 0) {
+      showPickerForCells(state.selectedCells);
+    } else {
+      document.getElementById('color-picker-panel').classList.add('hidden');
+    }
+  });
+}
+
+function computeRectCells(win, r1, c1, r2, c2) {
+  const minR = Math.min(r1, r2), maxR = Math.max(r1, r2);
+  const minC = Math.min(c1, c2), maxC = Math.max(c1, c2);
+  const cells = [];
+  for (let r = minR; r <= maxR; r++)
+    for (let c = minC; c <= maxC; c++)
+      cells.push({ win, row: r, col: c });
+  return cells;
+}
+
+function mergeSelections(base, extra) {
+  const merged = [...base];
+  for (const cell of extra) {
+    if (!merged.some(s => s.win === cell.win && s.row === cell.row && s.col === cell.col))
+      merged.push(cell);
+  }
+  return merged;
+}
+
+function applySelectionVisual(cells) {
+  // Clear all
+  for (const w of state.windows)
+    w.el.querySelectorAll('.pixel-cell.selected').forEach(c => c.classList.remove('selected'));
+  // Apply
+  state.selectedCells = cells;
+  for (const { win, row, col } of cells) {
+    const el = win.el.querySelector(`[data-row="${row}"][data-col="${col}"]`);
+    if (el) el.classList.add('selected');
+  }
+}
+
 // ── UI Init ────────────────────────────────────────────
+let windowZBase = 10;
+
 function initUI() {
   document.getElementById('new-palette-btn').addEventListener('click', () => {
     const name = document.getElementById('format-select').value;
@@ -172,66 +298,94 @@ function initUI() {
 }
 
 // ── Palette Window ─────────────────────────────────────
-let windowZBase = 10;
-
 class PaletteWindow {
-  constructor(format, pixelData = null) {
+  constructor(format, pixelData = null, opts = {}) {
+    this.id     = opts.id   || generateId();
+    this.name   = opts.name || format.name;
     this.format = format;
-    this.id = `win-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    // pixelData: array[row][col] = '#rrggbbaa'
     this.pixels = pixelData || this._initPixels();
-    this.el = null;
-    this._build();
+    this.el     = null;
+    this._saveTimer = null;
+    this._build(opts.position);
     state.windows.push(this);
     this._activate();
+    this._save();
   }
 
   _initPixels() {
-    const { height, width } = this.format;
-    return Array.from({ length: height }, () =>
-      Array.from({ length: width }, () => '#808080ff')
+    return Array.from({ length: this.format.height }, () =>
+      Array.from({ length: this.format.width }, () => '#808080')
     );
   }
 
-  getColor(row, col) { return this.pixels[row][col]; }
+  getColor(row, col) { return this.pixels[row]?.[col] ?? '#808080'; }
 
-  setColor(row, col, hex8) {
-    this.pixels[row][col] = hex8;
-    this.refreshCell(row, col);
-  }
-
-  refreshCell(row, col) {
+  setColor(row, col, hex6) {
+    if (!this.pixels[row]) return;
+    this.pixels[row][col] = hex6;
     const cell = this.el.querySelector(`[data-row="${row}"][data-col="${col}"]`);
-    if (cell) cell.style.background = hex8ToCSS(this.pixels[row][col]);
+    if (cell) cell.style.background = hex6;
   }
 
-  _build() {
+  _save() {
+    clearTimeout(this._saveTimer);
+    this._saveTimer = setTimeout(() => {
+      dbSave({
+        id:       this.id,
+        name:     this.name,
+        format:   this.format,
+        pixels:   this.pixels,
+        position: { top: parseInt(this.el.style.top), left: parseInt(this.el.style.left) },
+      });
+    }, 400);
+  }
+
+  _build(position) {
     const win = document.createElement('div');
     win.className = 'palette-window';
     win.id = this.id;
-    win.style.top = (60 + state.windows.length * 30) + 'px';
-    win.style.left = (60 + state.windows.length * 30) + 'px';
+    const offset = state.windows.length * 30;
+    win.style.top  = (position?.top  ?? 60 + offset) + 'px';
+    win.style.left = (position?.left ?? 60 + offset) + 'px';
     this.el = win;
 
     // Titlebar
     const titlebar = document.createElement('div');
     titlebar.className = 'window-titlebar';
-    titlebar.innerHTML = `
-      <span class="window-title">${this.format.name}</span>
-      <button class="window-close-btn" title="Close">✕</button>
-    `;
-    titlebar.querySelector('.window-close-btn').addEventListener('click', () => this.close());
-    makeDraggable(win, titlebar);
+
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.className = 'window-name-input';
+    nameInput.value = this.name;
+    nameInput.addEventListener('change', () => {
+      this.name = nameInput.value.trim() || this.format.name;
+      nameInput.value = this.name;
+      this._save();
+    });
+    // Prevent drag while editing name
+    nameInput.addEventListener('mousedown', e => e.stopPropagation());
+
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'window-close-btn';
+    closeBtn.title = 'Close';
+    closeBtn.textContent = '✕';
+    closeBtn.addEventListener('click', () => this.close());
+
+    titlebar.appendChild(nameInput);
+    titlebar.appendChild(closeBtn);
+    makeDraggable(win, titlebar, () => this._save());
     win.appendChild(titlebar);
 
     // Toolbar
     const toolbar = document.createElement('div');
     toolbar.className = 'window-toolbar';
-    toolbar.innerHTML = `<button class="dl-btn">Download PNG</button>`;
-    toolbar.querySelector('.dl-btn').addEventListener('click', () => this.downloadPng());
+    const dlBtn = document.createElement('button');
+    dlBtn.textContent = 'Download PNG';
+    dlBtn.addEventListener('click', () => this.downloadPng());
+    toolbar.appendChild(dlBtn);
     win.appendChild(toolbar);
 
-    // Content
+    // Grid
     const content = document.createElement('div');
     content.className = 'window-content';
     content.appendChild(this._buildGrid());
@@ -246,41 +400,35 @@ class PaletteWindow {
     const hasColGroups = format.columns.some(c => c.segments?.length);
     const hasRowGroups = !!format.rowGroups;
 
-    // Flatten rows for uniform access
-    const flatRows = hasRowGroups
-      ? format.rowGroups.flatMap(g => g.rows.map(r => ({ ...r, groupLabel: g.label })))
-      : format.rows;
-
     const table = document.createElement('table');
     table.className = 'grid-table';
 
-    // ── Header: col group label row (only when columns have segments) ──
+    // ── Column headers ──
     if (hasColGroups) {
-      const colGroupRow = document.createElement('tr');
-      colGroupRow.className = 'col-group-row';
-      // When rowGroups exist, need 2 leading spacers (group label + sub-row label)
+      // Row 1: group labels (with rowspan=2 corner)
+      const groupRow = document.createElement('tr');
+      groupRow.className = 'col-group-row';
       if (hasRowGroups) {
-        const groupCorner = document.createElement('th');
-        groupCorner.className = 'row-label-spacer row-group-spacer';
-        groupCorner.rowSpan = 2;
-        colGroupRow.appendChild(groupCorner);
+        const th = document.createElement('th');
+        th.className = 'row-label-spacer row-group-spacer';
+        th.rowSpan = 2;
+        groupRow.appendChild(th);
       }
-      const corner = document.createElement('th');
-      corner.className = 'row-label-spacer';
-      corner.rowSpan = 2;
-      colGroupRow.appendChild(corner);
-
+      const cornerTh = document.createElement('th');
+      cornerTh.className = 'row-label-spacer';
+      cornerTh.rowSpan = 2;
+      groupRow.appendChild(cornerTh);
       for (let gi = 0; gi < format.columns.length; gi++) {
         const grp = format.columns[gi];
         const th = document.createElement('th');
         th.colSpan = grp.segments.length;
         th.textContent = grp.label;
         if (gi > 0) th.classList.add('group-divider');
-        colGroupRow.appendChild(th);
+        groupRow.appendChild(th);
       }
-      table.appendChild(colGroupRow);
+      table.appendChild(groupRow);
 
-      // segment label row (no leading cells — covered by rowSpan above)
+      // Row 2: segment labels (no leading cells, covered by rowspan)
       const segRow = document.createElement('tr');
       segRow.className = 'seg-row';
       for (let gi = 0; gi < format.columns.length; gi++) {
@@ -294,114 +442,91 @@ class PaletteWindow {
       }
       table.appendChild(segRow);
     } else {
-      // Simple column label row
-      const colLabelRow = document.createElement('tr');
-      colLabelRow.className = 'col-group-row';
-      // When rowGroups exist, data rows have 2 leading cells (group + sub-row label)
+      // Simple single-row column labels
+      const labelRow = document.createElement('tr');
+      labelRow.className = 'col-group-row';
       if (hasRowGroups) {
-        const groupCorner = document.createElement('th');
-        groupCorner.className = 'row-label-spacer row-group-spacer';
-        colLabelRow.appendChild(groupCorner);
-      }
-      const corner = document.createElement('th');
-      corner.className = 'row-label-spacer';
-      colLabelRow.appendChild(corner);
-      for (let ci = 0; ci < format.columns.length; ci++) {
         const th = document.createElement('th');
-        th.textContent = format.columns[ci].label;
-        colLabelRow.appendChild(th);
+        th.className = 'row-label-spacer row-group-spacer';
+        labelRow.appendChild(th);
       }
-      table.appendChild(colLabelRow);
+      const cornerTh = document.createElement('th');
+      cornerTh.className = 'row-label-spacer';
+      labelRow.appendChild(cornerTh);
+      for (const col of format.columns) {
+        const th = document.createElement('th');
+        th.textContent = col.label;
+        labelRow.appendChild(th);
+      }
+      table.appendChild(labelRow);
     }
 
     // ── Data rows ──
     const colCount = format.width;
-    let row = 0;
+    let rowIndex = 0;
 
-    const appendDataRow = (rowDef, rowIndex, isGroupFirst, groupRowspan) => {
+    const makeDataRow = (rowDef, isGroupFirst, groupRowspan) => {
       const tr = document.createElement('tr');
 
-      // Row group label cell (only on first sub-row of group)
       if (hasRowGroups && isGroupFirst) {
-        const groupTd = document.createElement('td');
-        groupTd.className = 'row-group-label';
-        groupTd.rowSpan = groupRowspan;
-        groupTd.textContent = rowDef.groupLabel;
-        tr.appendChild(groupTd);
+        const td = document.createElement('td');
+        td.className = 'row-group-label';
+        td.rowSpan = groupRowspan;
+        td.textContent = rowDef.groupLabel;
+        tr.appendChild(td);
       }
 
-      // Sub-row label
-      const rowLabel = document.createElement('td');
-      rowLabel.className = 'row-label';
-      rowLabel.textContent = rowDef.label ?? `R${rowIndex}`;
-      tr.appendChild(rowLabel);
+      const labelTd = document.createElement('td');
+      labelTd.className = 'row-label';
+      labelTd.textContent = rowDef.label ?? `R${rowIndex}`;
+      tr.appendChild(labelTd);
 
-      // Pixel cells
       for (let col = 0; col < colCount; col++) {
         const td = document.createElement('td');
         td.className = 'pixel-cell';
         td.dataset.row = rowIndex;
         td.dataset.col = col;
-        td.style.background = hex8ToCSS(this.pixels[rowIndex][col]);
-        const _row = rowIndex, _col = col;
-        td.addEventListener('mousedown', (e) => this._onCellClick(e, _row, _col));
+        td.style.background = this.pixels[rowIndex]?.[col] ?? '#808080';
+        const _r = rowIndex, _c = col;
+        td.addEventListener('mousedown', (e) => this._onCellMouseDown(e, _r, _c));
         tr.appendChild(td);
       }
+
       table.appendChild(tr);
+      rowIndex++;
     };
 
     if (hasRowGroups) {
       for (const group of format.rowGroups) {
         for (let si = 0; si < group.rows.length; si++) {
-          const rowDef = { ...group.rows[si], groupLabel: group.label };
-          appendDataRow(rowDef, row, si === 0, group.rows.length);
-          row++;
+          makeDataRow({ ...group.rows[si], groupLabel: group.label }, si === 0, group.rows.length);
         }
       }
     } else {
-      for (const rowDef of flatRows) {
-        appendDataRow(rowDef, row, false, 1);
-        row++;
+      for (const rowDef of format.rows) {
+        makeDataRow(rowDef, false, 1);
       }
     }
 
     return table;
   }
 
-  _onCellClick(e, row, col) {
+  _onCellMouseDown(e, row, col) {
+    e.preventDefault();
     this._activate();
+
     const isShift = e.shiftKey;
+    const base = isShift ? [...state.selectedCells] : [];
 
     if (!isShift) {
-      // deselect all other windows' cells
-      for (const w of state.windows) w._clearSelection();
-      state.selectedCells = [];
+      applySelectionVisual([]);
     }
 
-    // toggle this cell
-    const existing = state.selectedCells.findIndex(c => c.win === this && c.row === row && c.col === col);
-    if (existing >= 0) {
-      state.selectedCells.splice(existing, 1);
-      this._setCellSelected(row, col, false);
-    } else {
-      state.selectedCells.push({ win: this, row, col });
-      this._setCellSelected(row, col, true);
-    }
+    state.dragState = { win: this, startRow: row, startCol: col, baseSelection: base };
 
-    if (state.selectedCells.length > 0) {
-      showPickerForCells(state.selectedCells);
-    } else {
-      document.getElementById('color-picker-panel').classList.add('hidden');
-    }
-  }
-
-  _setCellSelected(row, col, sel) {
-    const cell = this.el.querySelector(`[data-row="${row}"][data-col="${col}"]`);
-    if (cell) cell.classList.toggle('selected', sel);
-  }
-
-  _clearSelection() {
-    this.el.querySelectorAll('.pixel-cell.selected').forEach(c => c.classList.remove('selected'));
+    // Apply initial 1×1 selection immediately
+    const initial = mergeSelections(base, [{ win: this, row, col }]);
+    applySelectionVisual(initial);
   }
 
   _activate() {
@@ -413,90 +538,77 @@ class PaletteWindow {
 
   close() {
     this.el.remove();
-    const idx = state.windows.indexOf(this);
-    if (idx >= 0) state.windows.splice(idx, 1);
+    state.windows.splice(state.windows.indexOf(this), 1);
     state.selectedCells = state.selectedCells.filter(c => c.win !== this);
     if (state.activeWindow === this) state.activeWindow = null;
+    dbDelete(this.id);
   }
 
   // ── PNG export ───────────────────────────────────────
   downloadPng() {
     const { width, height } = this.format;
     const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
+    canvas.width = width; canvas.height = height;
     const ctx = canvas.getContext('2d');
-
-    for (let r = 0; r < height; r++) {
+    for (let r = 0; r < height; r++)
       for (let c = 0; c < width; c++) {
-        ctx.fillStyle = hex8ToCSS(this.pixels[r][c]);
+        ctx.fillStyle = this.pixels[r][c] ?? '#808080';
         ctx.fillRect(c, r, 1, 1);
       }
-    }
 
     canvas.toBlob((blob) => {
       blob.arrayBuffer().then((buf) => {
-        const metadata = JSON.stringify({
-          format: this.format,
-          pixels: this.pixels,
-        });
-        const pngWithMeta = injectPngText(buf, 'CPE_DATA', metadata);
+        const meta = JSON.stringify({ id: this.id, name: this.name, format: this.format, pixels: this.pixels });
+        const pngWithMeta = injectPngText(buf, 'CPE_DATA', meta);
         const a = document.createElement('a');
         a.href = URL.createObjectURL(new Blob([pngWithMeta], { type: 'image/png' }));
-        a.download = `${this.format.name}.png`;
+        a.download = `${this.name}.png`;
         a.click();
       });
     }, 'image/png');
   }
 }
 
-function createPaletteWindow(format, pixelData = null) {
-  return new PaletteWindow(format, pixelData);
+function createPaletteWindow(format, pixelData = null, opts = {}) {
+  return new PaletteWindow(format, pixelData, opts);
 }
 
-// ── Draggable ──────────────────────────────────────────
-function makeDraggable(el, handle) {
+function scheduleSaveActive() {
+  if (state.activeWindow) state.activeWindow._save();
+}
+
+// ── Draggable window ───────────────────────────────────
+function makeDraggable(el, handle, onMoved) {
   let ox, oy;
   handle.addEventListener('mousedown', (e) => {
-    if (e.target.closest('button')) return;
+    if (e.target.closest('button,input')) return;
     e.preventDefault();
     ox = e.clientX - el.offsetLeft;
     oy = e.clientY - el.offsetTop;
+    const onMove = (e) => {
+      el.style.left = (e.clientX - ox) + 'px';
+      el.style.top  = (e.clientY - oy) + 'px';
+    };
     document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp, { once: true });
+    document.addEventListener('mouseup', () => {
+      document.removeEventListener('mousemove', onMove);
+      onMoved?.();
+    }, { once: true });
   });
-  function onMove(e) {
-    el.style.left = (e.clientX - ox) + 'px';
-    el.style.top = (e.clientY - oy) + 'px';
-  }
-  function onUp() {
-    document.removeEventListener('mousemove', onMove);
-  }
 }
 
-// ── Drop (PNG / JSON) ─────────────────────────────────
+// ── Drop (PNG / JSON) ──────────────────────────────────
 function initDrop() {
-  const workspace = document.getElementById('workspace');
   const overlay = document.getElementById('drop-overlay');
-
-  document.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    overlay.classList.add('active');
-  });
-  document.addEventListener('dragleave', (e) => {
-    if (!e.relatedTarget) overlay.classList.remove('active');
-  });
+  document.addEventListener('dragover', (e) => { e.preventDefault(); overlay.classList.add('active'); });
+  document.addEventListener('dragleave', (e) => { if (!e.relatedTarget) overlay.classList.remove('active'); });
   document.addEventListener('drop', (e) => {
     e.preventDefault();
     overlay.classList.remove('active');
     const file = e.dataTransfer.files[0];
     if (!file) return;
-
-    if (file.name.endsWith('.json')) {
-      handleJsonDrop(file);
-    } else if (file.name.endsWith('.png') || file.type === 'image/png') {
-      handlePngDrop(file);
-    }
+    if (file.name.endsWith('.json')) handleJsonDrop(file);
+    else if (file.type === 'image/png' || file.name.endsWith('.png')) handlePngDrop(file);
   });
 }
 
@@ -506,16 +618,13 @@ function handleJsonDrop(file) {
     try {
       const data = JSON.parse(e.target.result);
       if (data.format && data.pixels) {
-        createPaletteWindow(data.format, data.pixels);
+        createPaletteWindow(data.format, data.pixels, { id: data.id, name: data.name });
       } else if (data.name && data.width) {
-        // it's a format definition
         state.formats[data.name] = data;
         addFormatOption(data);
         createPaletteWindow(data);
       }
-    } catch {
-      alert('Invalid JSON file.');
-    }
+    } catch { alert('Invalid JSON.'); }
   };
   reader.readAsText(file);
 }
@@ -524,102 +633,83 @@ function addFormatOption(fmt) {
   const select = document.getElementById('format-select');
   if ([...select.options].some(o => o.value === fmt.name)) return;
   const opt = document.createElement('option');
-  opt.value = fmt.name;
-  opt.textContent = fmt.name;
+  opt.value = fmt.name; opt.textContent = fmt.name;
   select.appendChild(opt);
 }
 
 function handlePngDrop(file) {
   const reader = new FileReader();
   reader.onload = (e) => {
-    const buf = e.target.result;
-    const json = extractPngText(buf, 'CPE_DATA');
-    if (!json) { alert('No palette data found in this PNG.'); return; }
+    const json = extractPngText(e.target.result, 'CPE_DATA');
+    if (!json) { alert('No palette data in this PNG.'); return; }
     try {
       const data = JSON.parse(json);
-      createPaletteWindow(data.format, data.pixels);
-    } catch {
-      alert('Failed to parse palette data from PNG.');
-    }
+      createPaletteWindow(data.format, data.pixels, { id: data.id, name: data.name });
+    } catch { alert('Failed to parse palette data.'); }
   };
   reader.readAsArrayBuffer(file);
 }
 
 // ── PNG tEXt chunk helpers ─────────────────────────────
 function crc32(buf) {
-  const table = crc32.table || (crc32.table = (() => {
-    const t = new Uint32Array(256);
+  if (!crc32._t) {
+    crc32._t = new Uint32Array(256);
     for (let i = 0; i < 256; i++) {
       let c = i;
       for (let k = 0; k < 8; k++) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
-      t[i] = c;
+      crc32._t[i] = c;
     }
-    return t;
-  })());
+  }
   let c = 0xffffffff;
-  for (let i = 0; i < buf.length; i++) c = table[(c ^ buf[i]) & 0xff] ^ (c >>> 8);
+  for (let i = 0; i < buf.length; i++) c = crc32._t[(c ^ buf[i]) & 0xff] ^ (c >>> 8);
   return (c ^ 0xffffffff) >>> 0;
 }
 
 function injectPngText(buf, keyword, text) {
   const src = new Uint8Array(buf);
   const enc = new TextEncoder();
-  const kwBytes = enc.encode(keyword);
-  const txtBytes = enc.encode(text);
-  // chunk data: keyword + null + text
-  const chunkData = new Uint8Array(kwBytes.length + 1 + txtBytes.length);
-  chunkData.set(kwBytes);
-  chunkData[kwBytes.length] = 0;
-  chunkData.set(txtBytes, kwBytes.length + 1);
+  const kwB = enc.encode(keyword), txB = enc.encode(text);
+  const data = new Uint8Array(kwB.length + 1 + txB.length);
+  data.set(kwB); data[kwB.length] = 0; data.set(txB, kwB.length + 1);
 
-  const chunkType = enc.encode('tEXt');
-  const chunkFull = new Uint8Array(chunkType.length + chunkData.length);
-  chunkFull.set(chunkType);
-  chunkFull.set(chunkData, chunkType.length);
-  const crc = crc32(chunkFull);
+  const typeBytes = enc.encode('tEXt');
+  const forCrc   = new Uint8Array(typeBytes.length + data.length);
+  forCrc.set(typeBytes); forCrc.set(data, typeBytes.length);
+  const crc = crc32(forCrc);
 
-  // Build tEXt chunk bytes
-  const chunk = new Uint8Array(4 + 4 + chunkData.length + 4);
-  const dv = new DataView(chunk.buffer);
-  dv.setUint32(0, chunkData.length);
-  chunk.set(chunkType, 4);
-  chunk.set(chunkData, 8);
-  dv.setUint32(8 + chunkData.length, crc);
+  const chunk = new Uint8Array(4 + 4 + data.length + 4);
+  new DataView(chunk.buffer).setUint32(0, data.length);
+  chunk.set(typeBytes, 4);
+  chunk.set(data, 8);
+  new DataView(chunk.buffer).setUint32(8 + data.length, crc);
 
-  // Find IDAT offset and inject before it
-  let i = 8; // skip PNG signature
+  let i = 8;
   while (i < src.length) {
-    const len = new DataView(src.buffer, src.byteOffset + i).getUint32(0);
+    const len  = new DataView(src.buffer, src.byteOffset + i).getUint32(0);
     const type = String.fromCharCode(...src.slice(i + 4, i + 8));
     if (type === 'IDAT') {
-      // inject here
       const out = new Uint8Array(src.length + chunk.length);
-      out.set(src.slice(0, i));
-      out.set(chunk, i);
-      out.set(src.slice(i), i + chunk.length);
+      out.set(src.slice(0, i)); out.set(chunk, i); out.set(src.slice(i), i + chunk.length);
       return out;
     }
-    i += 4 + 4 + len + 4;
+    i += 12 + len;
   }
-  return src; // fallback: unchanged
+  return src;
 }
 
 function extractPngText(buf, keyword) {
-  const src = new Uint8Array(buf);
+  const src = new Uint8Array(buf instanceof ArrayBuffer ? buf : buf.buffer);
   const dec = new TextDecoder();
   let i = 8;
   while (i < src.length - 8) {
-    const dv = new DataView(src.buffer, src.byteOffset + i);
-    const len = dv.getUint32(0);
+    const dv  = new DataView(src.buffer, src.byteOffset + i);
+    const len  = dv.getUint32(0);
     const type = String.fromCharCode(...src.slice(i + 4, i + 8));
     if (type === 'tEXt') {
-      const data = src.slice(i + 8, i + 8 + len);
+      const data    = src.slice(i + 8, i + 8 + len);
       const nullIdx = data.indexOf(0);
-      if (nullIdx < 0) { i += 12 + len; continue; }
-      const kw = dec.decode(data.slice(0, nullIdx));
-      if (kw === keyword) {
+      if (nullIdx >= 0 && dec.decode(data.slice(0, nullIdx)) === keyword)
         return dec.decode(data.slice(nullIdx + 1));
-      }
     }
     i += 12 + len;
   }
@@ -627,16 +717,4 @@ function extractPngText(buf, keyword) {
 }
 
 // ── Utilities ──────────────────────────────────────────
-function hex8ToRgba(hex8) {
-  if (!hex8 || hex8.length < 7) return { r: 128, g: 128, b: 128, a: 255 };
-  const r = parseInt(hex8.slice(1, 3), 16);
-  const g = parseInt(hex8.slice(3, 5), 16);
-  const b = parseInt(hex8.slice(5, 7), 16);
-  const a = hex8.length >= 9 ? parseInt(hex8.slice(7, 9), 16) : 255;
-  return { r, g, b, a };
-}
-
-function hex8ToCSS(hex8) {
-  const { r, g, b, a } = hex8ToRgba(hex8);
-  return `rgba(${r},${g},${b},${(a / 255).toFixed(3)})`;
-}
+function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
