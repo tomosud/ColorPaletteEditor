@@ -15,6 +15,7 @@ const state = {
   db: null,
   dbReady: false,
   adjustOrigins: {},   // { 'winId-row-col': hex6 } — original colors before Adjust
+  folderHandle: null,  // FileSystemDirectoryHandle
 };
 
 // ── Init ───────────────────────────────────────────────
@@ -26,21 +27,43 @@ document.addEventListener('DOMContentLoaded', async () => {
   initDragSelection();
   await loadSavedPalettes();
   state.dbReady = true;
+  await tryRestoreFolder();
 });
 
 // ── IndexedDB ──────────────────────────────────────────
-const DB_NAME = 'ColorPaletteEditor';
-const DB_VER  = 1;
-const STORE   = 'palettes';
+const DB_NAME     = 'ColorPaletteEditor';
+const DB_VER      = 2;
+const STORE       = 'palettes';
+const FOLDER_STORE = 'folderHandles';
 
 function initDB() {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VER);
     req.onupgradeneeded = e => {
-      e.target.result.createObjectStore(STORE, { keyPath: 'id' });
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains(STORE))
+        db.createObjectStore(STORE, { keyPath: 'id' });
+      if (!db.objectStoreNames.contains(FOLDER_STORE))
+        db.createObjectStore(FOLDER_STORE, { keyPath: 'id' });
     };
     req.onsuccess = e => { state.db = e.target.result; resolve(); };
     req.onerror   = e => { console.error('DB open failed', e); resolve(); };
+  });
+}
+
+function dbSaveFolderHandle(handle) {
+  if (!state.db) return;
+  const tx = state.db.transaction(FOLDER_STORE, 'readwrite');
+  tx.objectStore(FOLDER_STORE).put({ id: 'default', handle });
+}
+
+function dbLoadFolderHandle() {
+  return new Promise(resolve => {
+    if (!state.db) return resolve(null);
+    const tx  = state.db.transaction(FOLDER_STORE, 'readonly');
+    const req = tx.objectStore(FOLDER_STORE).get('default');
+    req.onsuccess = e => resolve(e.target.result?.handle ?? null);
+    req.onerror   = () => resolve(null);
   });
 }
 
@@ -378,6 +401,101 @@ function applySelectionVisual(cells) {
   captureAdjustOrigins();
 }
 
+// ── Folder Access (File System Access API) ─────────────
+async function openFolder() {
+  if (!window.showDirectoryPicker) { alert('File System Access API is not supported in this browser.'); return; }
+  try {
+    const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
+    state.folderHandle = handle;
+    dbSaveFolderHandle(handle);
+    await renderFolderBar();
+  } catch (e) {
+    if (e.name !== 'AbortError') console.error('Folder open failed', e);
+  }
+}
+
+async function tryRestoreFolder() {
+  if (!window.showDirectoryPicker) return;
+  const handle = await dbLoadFolderHandle();
+  if (!handle) return;
+  state.folderHandle = handle;
+  const perm = await handle.queryPermission({ mode: 'readwrite' });
+  if (perm === 'granted') {
+    await renderFolderBar();
+  } else {
+    // Show bar in reconnect state (needs user gesture to re-request)
+    renderFolderBarReconnect(handle.name);
+  }
+}
+
+function updateDlBtns() {
+  const label = state.folderHandle ? 'Save PNG' : 'Download PNG';
+  document.querySelectorAll('.dl-btn').forEach(btn => { btn.textContent = label; });
+}
+
+async function renderFolderBar() {
+  const bar = document.getElementById('folder-bar');
+  bar.classList.remove('hidden', 'reconnect');
+  document.getElementById('folder-bar-name').textContent = state.folderHandle.name;
+  updateDlBtns();
+  await refreshFolderFiles();
+}
+
+function renderFolderBarReconnect(name) {
+  const bar = document.getElementById('folder-bar');
+  bar.classList.remove('hidden');
+  bar.classList.add('reconnect');
+  document.getElementById('folder-bar-name').textContent = name;
+  document.getElementById('folder-file-list').innerHTML =
+    '<span class="folder-reconnect-hint">クリックして再接続</span>';
+}
+
+async function refreshFolderFiles() {
+  if (!state.folderHandle) return;
+  const list = document.getElementById('folder-file-list');
+  list.innerHTML = '';
+  const entries = [];
+  try {
+    for await (const entry of state.folderHandle.values()) {
+      if (entry.kind === 'file' &&
+          (entry.name.endsWith('.png') || entry.name.endsWith('.json'))) {
+        entries.push(entry);
+      }
+    }
+  } catch (e) {
+    console.warn('Cannot read folder:', e);
+    return;
+  }
+  entries.sort((a, b) => a.name.localeCompare(b.name));
+  for (const entry of entries) {
+    const btn = document.createElement('button');
+    btn.className = 'folder-file-btn';
+    btn.textContent = entry.name;
+    btn.title = entry.name;
+    btn.addEventListener('click', () => openFolderEntry(entry));
+    list.appendChild(btn);
+  }
+}
+
+async function openFolderEntry(entry) {
+  const file = await entry.getFile();
+  if (file.name.endsWith('.json')) {
+    handleJsonDrop(file);
+  } else {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const json = extractPngText(e.target.result, 'CPE_DATA');
+      if (!json) { alert('No palette data in this PNG.'); return; }
+      try {
+        const data = JSON.parse(json);
+        createPaletteWindow(data.format, data.pixels,
+          { id: data.id, name: data.name, colLabels: data.colLabels, memo: data.memo });
+      } catch { alert('Failed to parse palette data.'); }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+}
+
 // ── UI Init ────────────────────────────────────────────
 let windowZBase = 10;
 
@@ -386,6 +504,24 @@ function initUI() {
     const name = document.getElementById('format-select').value;
     if (!name) { alert('Select a format first.'); return; }
     createPaletteWindow(state.formats[name]);
+  });
+
+  document.getElementById('open-folder-btn').addEventListener('click', openFolder);
+
+  document.getElementById('folder-bar').addEventListener('click', async (e) => {
+    const bar = document.getElementById('folder-bar');
+    if (!bar.classList.contains('reconnect')) return;
+    try {
+      const perm = await state.folderHandle.requestPermission({ mode: 'readwrite' });
+      if (perm === 'granted') {
+        await renderFolderBar();
+      }
+    } catch (e) { console.warn('Permission request failed', e); }
+  });
+
+  document.getElementById('folder-refresh-btn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    refreshFolderFiles();
   });
 }
 
@@ -500,7 +636,8 @@ class PaletteWindow {
     const toolbar = document.createElement('div');
     toolbar.className = 'window-toolbar';
     const dlBtn = document.createElement('button');
-    dlBtn.textContent = 'Download PNG';
+    dlBtn.className = 'dl-btn';
+    dlBtn.textContent = state.folderHandle ? 'Save PNG' : 'Download PNG';
     dlBtn.addEventListener('click', () => this.downloadPng());
     toolbar.appendChild(dlBtn);
     win.appendChild(toolbar);
@@ -710,15 +847,44 @@ class PaletteWindow {
         ctx.fillRect(c, r, 1, 1);
       }
 
-    canvas.toBlob((blob) => {
-      blob.arrayBuffer().then((buf) => {
-        const meta = JSON.stringify({ id: this.id, name: this.name, format: this.format, pixels: this.pixels, colLabels: this.colLabels, memo: this.memo });
-        const pngWithMeta = injectPngText(buf, 'CPE_DATA', meta);
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(new Blob([pngWithMeta], { type: 'image/png' }));
-        a.download = `${this.name}.png`;
-        a.click();
-      });
+    canvas.toBlob(async (blob) => {
+      const buf = await blob.arrayBuffer();
+      const meta = JSON.stringify({ id: this.id, name: this.name, format: this.format, pixels: this.pixels, colLabels: this.colLabels, memo: this.memo });
+      const pngWithMeta = injectPngText(buf, 'CPE_DATA', meta);
+      const pngBlob = new Blob([pngWithMeta], { type: 'image/png' });
+
+      if (window.showSaveFilePicker) {
+        try {
+          const opts = {
+            suggestedName: `${this.name}.png`,
+            types: [{ description: 'PNG Image', accept: { 'image/png': ['.png'] } }],
+          };
+          if (state.folderHandle) opts.startIn = state.folderHandle;
+          const fileHandle = await window.showSaveFilePicker(opts);
+          const writable = await fileHandle.createWritable();
+          await writable.write(pngBlob);
+          await writable.close();
+          // Apply saved filename as palette name
+          const savedName = fileHandle.name.replace(/\.png$/i, '');
+          if (savedName && savedName !== this.name) {
+            this.name = savedName;
+            const inp = this.el.querySelector('.window-name-input');
+            if (inp) inp.value = savedName;
+            this._save();
+          }
+          // Refresh folder file list so new file appears
+          if (state.folderHandle) refreshFolderFiles();
+          return;
+        } catch (e) {
+          if (e.name === 'AbortError') return;
+          // Fall through to legacy download on unexpected errors
+        }
+      }
+      // Legacy fallback
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(pngBlob);
+      a.download = `${this.name}.png`;
+      a.click();
     }, 'image/png');
   }
 }

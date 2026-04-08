@@ -15,9 +15,17 @@
         <option value="">-- Select Format --</option>
       </select>
       <button id="new-palette-btn">New Palette</button>
+      <button id="open-folder-btn">📁 Folder</button>
       <span class="drop-hint">or drop a PNG/JSON here</span>
     </div>
   </header>
+
+  <div id="folder-bar" class="folder-bar hidden">
+    <span class="folder-bar-icon">📁</span>
+    <span id="folder-bar-name" class="folder-bar-name"></span>
+    <div id="folder-file-list" class="folder-file-list"></div>
+    <button id="folder-refresh-btn" class="folder-refresh-btn" title="Refresh">↻</button>
+  </div>
 
   <div id="workspace" class="workspace">
     <div id="drop-overlay" class="drop-overlay">
