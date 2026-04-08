@@ -46,7 +46,7 @@ async function loadFormats() {
 function initColorPicker() {
   state.colorPicker = new iro.ColorPicker('#iro-picker', {
     width: 200,
-    color: '#ffffff',
+    color: '#808080',
     layout: [
       { component: iro.ui.Box },
       { component: iro.ui.Slider, options: { sliderType: 'hue' } },
@@ -54,9 +54,12 @@ function initColorPicker() {
     ],
   });
 
+  // Single named handler — never removed/re-added
+  state._pickerChanging = false;
   state.colorPicker.on('color:change', (color) => {
+    if (state._pickerChanging) return;
     syncPickerToInputs(color);
-    applyColorToSelected(color.hex8String);
+    applyColorToSelected(colorToHex8(color));
   });
 
   document.getElementById('hex-input').addEventListener('change', onHexInput);
@@ -71,6 +74,24 @@ function initColorPicker() {
 
   document.getElementById('copy-color-btn').addEventListener('click', copyColor);
   document.getElementById('paste-color-btn').addEventListener('click', pasteColor);
+}
+
+// Read hex8 from iro color safely
+function colorToHex8(color) {
+  const r = color.red.toString(16).padStart(2, '0');
+  const g = color.green.toString(16).padStart(2, '0');
+  const b = color.blue.toString(16).padStart(2, '0');
+  const a = Math.round(color.alpha * 255).toString(16).padStart(2, '0');
+  return `#${r}${g}${b}${a}`;
+}
+
+// Set iro color from hex8 string without triggering applyColorToSelected
+function setPickerColor(hex8) {
+  state._pickerChanging = true;
+  const rgba = hex8ToRgba(hex8);
+  state.colorPicker.color.set({ r: rgba.r, g: rgba.g, b: rgba.b, a: rgba.a / 255 });
+  syncPickerToInputs(state.colorPicker.color);
+  state._pickerChanging = false;
 }
 
 function syncPickerToInputs(color) {
@@ -111,15 +132,7 @@ function showPickerForCells(cells) {
 
   if (cells.length > 0) {
     const { win, row, col } = cells[0];
-    const c = win.getColor(row, col);
-    // suppress color:change while setting
-    state.colorPicker.off('color:change');
-    state.colorPicker.color.set(c);
-    syncPickerToInputs(state.colorPicker.color);
-    state.colorPicker.on('color:change', (color) => {
-      syncPickerToInputs(color);
-      applyColorToSelected(color.hex8String);
-    });
+    setPickerColor(win.getColor(row, col));
   }
 }
 
@@ -139,13 +152,7 @@ function pasteColor() {
     win.refreshCell(row, col);
   }
   if (state.selectedCells.length > 0) {
-    state.colorPicker.off('color:change');
-    state.colorPicker.color.set(src);
-    syncPickerToInputs(state.colorPicker.color);
-    state.colorPicker.on('color:change', (color) => {
-      syncPickerToInputs(color);
-      applyColorToSelected(color.hex8String);
-    });
+    setPickerColor(src);
   }
 }
 
@@ -294,7 +301,9 @@ class PaletteWindow {
           td.dataset.row = row;
           td.dataset.col = col;
           td.style.background = hex8ToCSS(this.pixels[row][col]);
-          td.addEventListener('mousedown', (e) => this._onCellClick(e, row, col));
+          // Capture col by value — `col` is a shared variable that changes each iteration
+          const _col = col;
+          td.addEventListener('mousedown', (e) => this._onCellClick(e, row, _col));
           tr.appendChild(td);
           col++;
         }
@@ -564,12 +573,16 @@ function extractPngText(buf, keyword) {
 }
 
 // ── Utilities ──────────────────────────────────────────
-function hex8ToCSS(hex8) {
-  // '#rrggbbaa' → 'rgba(r,g,b,a)'
-  if (!hex8 || hex8.length < 7) return hex8 || '#808080';
+function hex8ToRgba(hex8) {
+  if (!hex8 || hex8.length < 7) return { r: 128, g: 128, b: 128, a: 255 };
   const r = parseInt(hex8.slice(1, 3), 16);
   const g = parseInt(hex8.slice(3, 5), 16);
   const b = parseInt(hex8.slice(5, 7), 16);
-  const a = hex8.length >= 9 ? parseInt(hex8.slice(7, 9), 16) / 255 : 1;
-  return `rgba(${r},${g},${b},${a.toFixed(3)})`;
+  const a = hex8.length >= 9 ? parseInt(hex8.slice(7, 9), 16) : 255;
+  return { r, g, b, a };
+}
+
+function hex8ToCSS(hex8) {
+  const { r, g, b, a } = hex8ToRgba(hex8);
+  return `rgba(${r},${g},${b},${(a / 255).toFixed(3)})`;
 }

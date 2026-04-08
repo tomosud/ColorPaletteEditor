@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e \"console.log\\('node ok'\\)\")",
+      "Bash(npm --version)",
+      "Bash(npx playwright:*)",
+      "Bash(npx serve:*)"
+    ]
+  }
+}
