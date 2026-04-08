@@ -21,21 +21,21 @@
     }
   ],
   "columns": [
-    { "label": "01" },
-    { "label": "02" },
-    { "label": "03" },
-    { "label": "04" },
-    { "label": "05" },
-    { "label": "06" },
-    { "label": "07" },
-    { "label": "08" },
-    { "label": "09" },
-    { "label": "10" },
-    { "label": "11" },
-    { "label": "12" },
-    { "label": "13" },
-    { "label": "14" },
-    { "label": "15" },
-    { "label": "16" }
+    { "label": "01", "editable": true },
+    { "label": "02", "editable": true },
+    { "label": "03", "editable": true },
+    { "label": "04", "editable": true },
+    { "label": "05", "editable": true },
+    { "label": "06", "editable": true },
+    { "label": "07", "editable": true },
+    { "label": "08", "editable": true },
+    { "label": "09", "editable": true },
+    { "label": "10", "editable": true },
+    { "label": "11", "editable": true },
+    { "label": "12", "editable": true },
+    { "label": "13", "editable": true },
+    { "label": "14", "editable": true },
+    { "label": "15", "editable": true },
+    { "label": "16", "editable": true }
   ]
 }

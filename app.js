@@ -69,9 +69,11 @@ async function loadSavedPalettes() {
   const records = await dbLoadAll();
   for (const rec of records) {
     new PaletteWindow(rec.format, rec.pixels, {
-      id:       rec.id,
-      name:     rec.name,
-      position: rec.position,
+      id:        rec.id,
+      name:      rec.name,
+      position:  rec.position,
+      colLabels: rec.colLabels,
+      memo:      rec.memo,
     });
   }
 }
@@ -106,13 +108,18 @@ async function loadFormats() {
 
 // ── Color Picker ───────────────────────────────────────
 function initColorPicker() {
+  // Only Box — hue handled by custom slider
   state.colorPicker = new iro.ColorPicker('#iro-picker', {
     width: 200,
     color: '#808080',
-    layout: [
-      { component: iro.ui.Box },
-      { component: iro.ui.Slider, options: { sliderType: 'hue' } },
-    ],
+    layout: [{ component: iro.ui.Box }],
+  });
+
+  // Snapshot before user starts dragging the SV box
+  state.colorPicker.on('input:start', () => {
+    if (state.selectedCells.length > 0 && state.activeWindow) {
+      state.activeWindow._snapshotBefore();
+    }
   });
 
   state.colorPicker.on('color:change', (color) => {
@@ -121,11 +128,31 @@ function initColorPicker() {
     applyColorToSelected(colorToHex6(color));
   });
 
-  document.getElementById('hex-input').addEventListener('change', onHexInput);
+  // Hue range slider
+  const hueSlider = document.getElementById('hue-slider');
+  hueSlider.addEventListener('mousedown', () => {
+    if (state.selectedCells.length > 0 && state.activeWindow)
+      state.activeWindow._snapshotBefore();
+  });
+  hueSlider.addEventListener('input', () => {
+    const h = parseInt(hueSlider.value);
+    document.getElementById('hue-value').textContent = h;
+    const { s, v } = state.colorPicker.color.hsv;
+    state.colorPicker.color.set({ h, s, v });
+  });
+
+  // Text inputs — snapshot before applying
+  const snapshotOnChange = (fn) => (...args) => {
+    if (state.selectedCells.length > 0 && state.activeWindow)
+      state.activeWindow._snapshotBefore();
+    fn(...args);
+  };
+
+  document.getElementById('hex-input').addEventListener('change', snapshotOnChange(onHexInput));
   ['r-input', 'g-input', 'b-input'].forEach(id =>
-    document.getElementById(id).addEventListener('change', onRGBInput));
+    document.getElementById(id).addEventListener('change', snapshotOnChange(onRGBInput)));
   ['h-input', 's-input', 'v-input'].forEach(id =>
-    document.getElementById(id).addEventListener('change', onHSVInput));
+    document.getElementById(id).addEventListener('change', snapshotOnChange(onHSVInput)));
 
   document.getElementById('picker-close-btn').addEventListener('click', () => {
     document.getElementById('color-picker-panel').classList.add('hidden');
@@ -141,9 +168,13 @@ function syncPickerToInputs(color) {
   document.getElementById('g-input').value   = color.green;
   document.getElementById('b-input').value   = color.blue;
   const hsv = color.hsv;
-  document.getElementById('h-input').value   = Math.round(hsv.h);
+  const h = Math.round(hsv.h);
+  document.getElementById('h-input').value   = h;
   document.getElementById('s-input').value   = Math.round(hsv.s);
   document.getElementById('v-input').value   = Math.round(hsv.v);
+  // Sync custom hue slider
+  document.getElementById('hue-slider').value  = h;
+  document.getElementById('hue-value').textContent = h;
 }
 
 function setPickerColor(hex6) {
@@ -201,30 +232,46 @@ function showPickerForCells(cells) {
   setPickerColor(win.getColor(row, col));
 }
 
-// ── Copy / Paste ───────────────────────────────────────
+// ── Copy / Paste (Excel-style) ─────────────────────────
 function copyColor() {
   if (state.selectedCells.length === 0) return;
+  // Record relative positions from top-left anchor
+  const rows = state.selectedCells.map(c => c.row);
+  const cols = state.selectedCells.map(c => c.col);
+  const minRow = Math.min(...rows);
+  const minCol = Math.min(...cols);
   state.clipboard = state.selectedCells.map(({ win, row, col }) => ({
-    row, col, color: win.getColor(row, col),
+    dRow: row - minRow,
+    dCol: col - minCol,
+    color: win.getColor(row, col),
   }));
 }
 
 function pasteColor() {
   if (!state.clipboard || state.selectedCells.length === 0) return;
-  // Paste first clipboard color to all selected cells
-  const src = state.clipboard[0].color;
-  for (const { win, row, col } of state.selectedCells) {
-    win.setColor(row, col, src);
+  const win = state.activeWindow || state.selectedCells[0].win;
+  // Anchor = top-left of current selection
+  const anchorRow = Math.min(...state.selectedCells.map(c => c.row));
+  const anchorCol = Math.min(...state.selectedCells.map(c => c.col));
+
+  win._snapshotBefore();
+  for (const { dRow, dCol, color } of state.clipboard) {
+    const r = anchorRow + dRow;
+    const c = anchorCol + dCol;
+    if (r >= 0 && r < win.format.height && c >= 0 && c < win.format.width) {
+      win.setColor(r, c, color);
+    }
   }
-  setPickerColor(src);
-  scheduleSaveActive();
+  if (state.clipboard.length > 0) setPickerColor(state.clipboard[0].color);
+  win._save();
 }
 
 document.addEventListener('keydown', (e) => {
   const tag = document.activeElement?.tagName;
-  if (tag === 'INPUT') return; // don't intercept when typing
-  if (e.ctrlKey && e.key === 'c') copyColor();
-  if (e.ctrlKey && e.key === 'v') pasteColor();
+  if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+  if (e.ctrlKey && e.key === 'c') { e.preventDefault(); copyColor(); }
+  if (e.ctrlKey && e.key === 'v') { e.preventDefault(); pasteColor(); }
+  if (e.ctrlKey && e.key === 'z') { e.preventDefault(); state.activeWindow?._undo(); }
 });
 
 // ── Drag Area Selection ────────────────────────────────
@@ -300,12 +347,15 @@ function initUI() {
 // ── Palette Window ─────────────────────────────────────
 class PaletteWindow {
   constructor(format, pixelData = null, opts = {}) {
-    this.id     = opts.id   || generateId();
-    this.name   = opts.name || format.name;
-    this.format = format;
-    this.pixels = pixelData || this._initPixels();
-    this.el     = null;
+    this.id        = opts.id   || generateId();
+    this.name      = opts.name || format.name;
+    this.format    = format;
+    this.pixels    = pixelData || this._initPixels();
+    this.colLabels = opts.colLabels || format.columns.map(c => c.label);
+    this.memo      = opts.memo || '';
+    this.el        = null;
     this._saveTimer = null;
+    this._pastStack = [];   // undo history
     this._build(opts.position);
     state.windows.push(this);
     this._activate();
@@ -327,15 +377,40 @@ class PaletteWindow {
     if (cell) cell.style.background = hex6;
   }
 
+  // ── Undo ───────────────────────────────────────────
+  _snapshotBefore() {
+    this._pastStack.push(this.pixels.map(r => [...r]));
+    if (this._pastStack.length > 50) this._pastStack.shift();
+  }
+
+  _undo() {
+    if (this._pastStack.length === 0) return;
+    this.pixels = this._pastStack.pop();
+    // Refresh all cells visually
+    for (let r = 0; r < this.format.height; r++)
+      for (let c = 0; c < this.format.width; c++) {
+        const cell = this.el.querySelector(`[data-row="${r}"][data-col="${c}"]`);
+        if (cell) cell.style.background = this.pixels[r][c] ?? '#808080';
+      }
+    // Update picker if selection still active
+    if (state.selectedCells.some(s => s.win === this)) {
+      const { row, col } = state.selectedCells.find(s => s.win === this);
+      setPickerColor(this.getColor(row, col));
+    }
+    this._save();
+  }
+
   _save() {
     clearTimeout(this._saveTimer);
     this._saveTimer = setTimeout(() => {
       dbSave({
-        id:       this.id,
-        name:     this.name,
-        format:   this.format,
-        pixels:   this.pixels,
-        position: { top: parseInt(this.el.style.top), left: parseInt(this.el.style.left) },
+        id:        this.id,
+        name:      this.name,
+        format:    this.format,
+        pixels:    this.pixels,
+        colLabels: this.colLabels,
+        memo:      this.memo,
+        position:  { top: parseInt(this.el.style.top), left: parseInt(this.el.style.left) },
       });
     }, 400);
   }
@@ -390,6 +465,18 @@ class PaletteWindow {
     content.className = 'window-content';
     content.appendChild(this._buildGrid());
     win.appendChild(content);
+
+    // Memo
+    const memoArea = document.createElement('textarea');
+    memoArea.className = 'window-memo';
+    memoArea.placeholder = 'memo...';
+    memoArea.value = this.memo;
+    memoArea.addEventListener('mousedown', e => e.stopPropagation());
+    memoArea.addEventListener('input', () => {
+      this.memo = memoArea.value;
+      this._save();
+    });
+    win.appendChild(memoArea);
 
     win.addEventListener('mousedown', () => this._activate());
     document.getElementById('workspace').appendChild(win);
@@ -453,9 +540,24 @@ class PaletteWindow {
       const cornerTh = document.createElement('th');
       cornerTh.className = 'row-label-spacer';
       labelRow.appendChild(cornerTh);
-      for (const col of format.columns) {
+      for (let ci = 0; ci < format.columns.length; ci++) {
+        const col = format.columns[ci];
         const th = document.createElement('th');
-        th.textContent = col.label;
+        if (col.editable) {
+          const inp = document.createElement('input');
+          inp.type = 'text';
+          inp.className = 'col-label-input';
+          inp.value = this.colLabels[ci] ?? col.label;
+          inp.addEventListener('mousedown', e => e.stopPropagation());
+          const ci_ = ci;
+          inp.addEventListener('change', () => {
+            this.colLabels[ci_] = inp.value;
+            this._save();
+          });
+          th.appendChild(inp);
+        } else {
+          th.textContent = this.colLabels[ci] ?? col.label;
+        }
         labelRow.appendChild(th);
       }
       table.appendChild(labelRow);
@@ -537,6 +639,7 @@ class PaletteWindow {
   }
 
   close() {
+    if (!confirm(`"${this.name}" を閉じますか？`)) return;
     this.el.remove();
     state.windows.splice(state.windows.indexOf(this), 1);
     state.selectedCells = state.selectedCells.filter(c => c.win !== this);

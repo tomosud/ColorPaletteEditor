@@ -114,25 +114,47 @@ test.describe('Color Palette Editor', () => {
     expect(selCount).toBe(3);
   });
 
-  // ── 8. Copy / Paste ─────────────────────────────────
-  test('copy and paste color', async ({ page }) => {
+  // ── 8. Excel-style copy/paste ───────────────────────
+  test('excel copy: relative positions preserved on paste', async ({ page }) => {
     await page.selectOption('#format-select', 'Landscape');
     await page.click('#new-palette-btn');
 
-    await page.locator('.pixel-cell[data-row="0"][data-col="0"]').click();
+    // Set colors at (0,0)=red, (0,1)=green, (1,0)=blue, (1,1)=white
     await page.evaluate(() => {
-      state._pickerChanging = false;
-      state.colorPicker.color.set({ r: 200, g: 50, b: 50 });
+      const w = state.windows[0];
+      w.setColor(0, 0, '#ff0000');
+      w.setColor(0, 1, '#00ff00');
+      w.setColor(1, 0, '#0000ff');
+      w.setColor(1, 1, '#ffffff');
     });
-    await page.waitForTimeout(30);
+
+    // Drag-select 2×2 area: (0,0) to (1,1)
+    const cell00 = page.locator('.pixel-cell[data-row="0"][data-col="0"]');
+    const cell11 = page.locator('.pixel-cell[data-row="1"][data-col="1"]');
+    const b00 = await cell00.boundingBox();
+    const b11 = await cell11.boundingBox();
+    await page.mouse.move(b00.x + 5, b00.y + 5);
+    await page.mouse.down();
+    await page.mouse.move(b11.x + 5, b11.y + 5);
+    await page.mouse.up();
+
+    const selCount = await page.evaluate(() => state.selectedCells.length);
+    expect(selCount).toBe(4); // 2×2
 
     await page.click('#copy-color-btn');
 
-    await page.locator('.pixel-cell[data-row="1"][data-col="1"]').click();
+    // Paste with anchor at (0,2): click cell (0,2)
+    await page.locator('.pixel-cell[data-row="0"][data-col="2"]').click();
     await page.click('#paste-color-btn');
 
-    const pasted = await page.evaluate(() => state.windows[0].getColor(1, 1));
-    expect(pasted).toMatch(/^#c83232/);
+    // dRow=0,dCol=0 → (0,2)=red
+    // dRow=0,dCol=1 → (0,3)=green
+    // dRow=1,dCol=0 → (1,2)=blue
+    // dRow=1,dCol=1 → (1,3)=white
+    expect(await page.evaluate(() => state.windows[0].getColor(0, 2))).toBe('#ff0000');
+    expect(await page.evaluate(() => state.windows[0].getColor(0, 3))).toBe('#00ff00');
+    expect(await page.evaluate(() => state.windows[0].getColor(1, 2))).toBe('#0000ff');
+    expect(await page.evaluate(() => state.windows[0].getColor(1, 3))).toBe('#ffffff');
   });
 
   // ── 9. Custom window name ───────────────────────────
@@ -186,12 +208,13 @@ test.describe('Color Palette Editor', () => {
     expect(await page.evaluate(() => state.windows.length)).toBe(2);
   });
 
-  // ── 12. Close window ────────────────────────────────
+  // ── 12. Close window with confirm ───────────────────
   test('closing a window removes it from DB', async ({ page }) => {
     await page.selectOption('#format-select', 'Landscape');
     await page.click('#new-palette-btn');
-    const id = await page.evaluate(() => state.windows[0].id);
 
+    // Accept the confirm dialog
+    page.once('dialog', d => d.accept());
     await page.locator('.window-close-btn').click();
     await expect(page.locator('.palette-window')).toHaveCount(0);
 
@@ -235,7 +258,28 @@ test.describe('Color Palette Editor', () => {
     expect(parsed.name).toBeTruthy();
   });
 
-  // ── 14. HSV inputs sync ─────────────────────────────
+  // ── 14. Undo restores previous color ────────────────
+  test('Ctrl+Z undoes last color change', async ({ page }) => {
+    await page.selectOption('#format-select', 'Landscape');
+    await page.click('#new-palette-btn');
+
+    await page.locator('.pixel-cell[data-row="0"][data-col="0"]').click();
+
+    // Snapshot then change to red
+    await page.evaluate(() => {
+      state.activeWindow._snapshotBefore();
+      state.windows[0].setColor(0, 0, '#ff0000');
+    });
+
+    expect(await page.evaluate(() => state.windows[0].getColor(0, 0))).toBe('#ff0000');
+
+    // Undo
+    await page.evaluate(() => state.activeWindow._undo());
+
+    expect(await page.evaluate(() => state.windows[0].getColor(0, 0))).toBe('#808080');
+  });
+
+  // ── 15. HSV inputs sync ─────────────────────────────
   test('HSV inputs are synced when picker changes', async ({ page }) => {
     await page.selectOption('#format-select', 'Landscape');
     await page.click('#new-palette-btn');

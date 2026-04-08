@@ -278,6 +278,44 @@ button:active {
   min-width: 60px;
 }
 
+/* Editable column label input */
+.col-label-input {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid transparent;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+  font-family: inherit;
+  text-align: center;
+  width: var(--cell-size);
+  padding: 0 2px;
+  outline: none;
+  cursor: default;
+}
+.col-label-input:hover { border-bottom-color: var(--border); cursor: text; }
+.col-label-input:focus { border-bottom-color: var(--accent); background: var(--bg3); cursor: text; }
+
+/* Memo textarea */
+.window-memo {
+  display: block;
+  width: 100%;
+  min-height: 52px;
+  background: var(--bg3);
+  border: none;
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 4px 4px;
+  color: var(--text);
+  font-size: 12px;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  padding: 6px 10px;
+  resize: vertical;
+  outline: none;
+  box-sizing: border-box;
+}
+.window-memo:focus { border-top-color: var(--accent); }
+.window-memo::placeholder { color: var(--text-dim); }
+
 /* ── Color Picker Panel ──────────────────────────── */
 .color-picker-panel {
   position: fixed;
@@ -326,9 +364,69 @@ button:active {
 }
 
 #iro-picker {
-  padding: 10px;
+  padding: 10px 10px 4px;
   display: flex;
   justify-content: center;
+}
+
+/* Hue slider row */
+.hue-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px 8px;
+}
+
+.hue-label {
+  font-size: 11px;
+  color: var(--text-dim);
+  width: 14px;
+  flex-shrink: 0;
+}
+
+.hue-value {
+  font-size: 11px;
+  color: var(--text-dim);
+  width: 26px;
+  text-align: right;
+  flex-shrink: 0;
+  font-family: monospace;
+}
+
+.hue-slider {
+  flex: 1;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 14px;
+  border-radius: 7px;
+  background: linear-gradient(to right,
+    hsl(0,100%,50%), hsl(30,100%,50%), hsl(60,100%,50%),
+    hsl(90,100%,50%), hsl(120,100%,50%), hsl(150,100%,50%),
+    hsl(180,100%,50%), hsl(210,100%,50%), hsl(240,100%,50%),
+    hsl(270,100%,50%), hsl(300,100%,50%), hsl(330,100%,50%),
+    hsl(360,100%,50%));
+  cursor: pointer;
+  border: 1px solid var(--border);
+  outline: none;
+}
+.hue-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid #555;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.5);
+  cursor: pointer;
+}
+.hue-slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid #555;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.5);
+  cursor: pointer;
 }
 
 .color-inputs {
