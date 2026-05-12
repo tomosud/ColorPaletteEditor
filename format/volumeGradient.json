@@ -3,8 +3,8 @@
   "width": 64,
   "height": 8,
   "display": {
-    "cellWidth": 27,
-    "cellHeight": 20
+    "cellWidth": 20,
+    "cellHeight": 25
   },
   "rows": [
     { "label": "Spring" },

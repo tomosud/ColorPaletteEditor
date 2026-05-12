@@ -52,8 +52,8 @@ test.describe('Color Palette Editor', () => {
         height: parseFloat(style.height),
       };
     });
-    expect(cellSize.width).toBe(27);
-    expect(cellSize.height).toBe(20);
+    expect(cellSize.width).toBe(20);
+    expect(cellSize.height).toBe(25);
   });
 
   test('creates Landscape window with 32 cells', async ({ page }) => {

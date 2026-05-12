@@ -339,7 +339,11 @@ button:active {
 /* Pixel cell */
 .pixel-cell {
   width: var(--cell-width, var(--cell-size));
+  min-width: var(--cell-width, var(--cell-size));
+  max-width: var(--cell-width, var(--cell-size));
   height: var(--cell-height, var(--cell-size));
+  min-height: var(--cell-height, var(--cell-size));
+  max-height: var(--cell-height, var(--cell-size));
   border: 1px solid var(--border);
   cursor: pointer;
   position: relative;
@@ -388,6 +392,8 @@ button:active {
   font-family: inherit;
   text-align: center;
   width: var(--cell-width, var(--cell-size));
+  min-width: var(--cell-width, var(--cell-size));
+  max-width: var(--cell-width, var(--cell-size));
   padding: 0 2px;
   outline: none;
   cursor: default;
