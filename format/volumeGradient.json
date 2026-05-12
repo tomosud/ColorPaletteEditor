@@ -1,7 +1,11 @@
 {
   "name": "volume gradient",
-  "width": 32,
+  "width": 64,
   "height": 8,
+  "display": {
+    "cellWidth": 27,
+    "cellHeight": 20
+  },
   "rows": [
     { "label": "Spring" },
     { "label": "Summer" },
@@ -44,6 +48,38 @@
     { "label": "29", "editable": true },
     { "label": "30", "editable": true },
     { "label": "31", "editable": true },
-    { "label": "32", "editable": true }
+    { "label": "32", "editable": true },
+    { "label": "33", "editable": true },
+    { "label": "34", "editable": true },
+    { "label": "35", "editable": true },
+    { "label": "36", "editable": true },
+    { "label": "37", "editable": true },
+    { "label": "38", "editable": true },
+    { "label": "39", "editable": true },
+    { "label": "40", "editable": true },
+    { "label": "41", "editable": true },
+    { "label": "42", "editable": true },
+    { "label": "43", "editable": true },
+    { "label": "44", "editable": true },
+    { "label": "45", "editable": true },
+    { "label": "46", "editable": true },
+    { "label": "47", "editable": true },
+    { "label": "48", "editable": true },
+    { "label": "49", "editable": true },
+    { "label": "50", "editable": true },
+    { "label": "51", "editable": true },
+    { "label": "52", "editable": true },
+    { "label": "53", "editable": true },
+    { "label": "54", "editable": true },
+    { "label": "55", "editable": true },
+    { "label": "56", "editable": true },
+    { "label": "57", "editable": true },
+    { "label": "58", "editable": true },
+    { "label": "59", "editable": true },
+    { "label": "60", "editable": true },
+    { "label": "61", "editable": true },
+    { "label": "62", "editable": true },
+    { "label": "63", "editable": true },
+    { "label": "64", "editable": true }
   ]
 }

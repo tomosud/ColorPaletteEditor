@@ -621,6 +621,7 @@ class PaletteWindow {
   _build(position) {
     const win = document.createElement('div');
     win.className = 'palette-window';
+    this._applyDisplayOptions(win);
     win.id = this.id;
     const offset = state.windows.length * 30;
     win.style.top  = (position?.top  ?? 60 + offset) + 'px';
@@ -684,6 +685,18 @@ class PaletteWindow {
 
     win.addEventListener('mousedown', () => this._activate());
     document.getElementById('workspace').appendChild(win);
+  }
+
+  _applyDisplayOptions(win) {
+    const { display } = this.format;
+    if (!display) return;
+
+    if (Number.isFinite(display.cellWidth) && display.cellWidth > 0) {
+      win.style.setProperty('--cell-width', `${display.cellWidth}px`);
+    }
+    if (Number.isFinite(display.cellHeight) && display.cellHeight > 0) {
+      win.style.setProperty('--cell-height', `${display.cellHeight}px`);
+    }
   }
 
   _buildGrid() {

@@ -19,12 +19,12 @@ test.describe('Color Palette Editor', () => {
   });
 
   // ── 2. New palette window ───────────────────────────
-  test('volume gradient has 8 rows and 32 columns', async ({ page }) => {
+  test('volume gradient has 8 rows and 64 columns', async ({ page }) => {
     await page.selectOption('#format-select', 'volume gradient');
     await page.click('#new-palette-btn');
 
     const win = page.locator('.palette-window');
-    await expect(win.locator('.pixel-cell')).toHaveCount(256);
+    await expect(win.locator('.pixel-cell')).toHaveCount(512);
 
     const rowLabels = await win.locator('.row-label').allTextContents();
     expect(rowLabels).toEqual([
@@ -42,8 +42,18 @@ test.describe('Color Palette Editor', () => {
       inputs.map(input => input.value)
     );
     expect(colLabels.at(0)).toBe('1');
-    expect(colLabels.at(-1)).toBe('32');
-    expect(colLabels).toHaveLength(32);
+    expect(colLabels.at(-1)).toBe('64');
+    expect(colLabels).toHaveLength(64);
+
+    const cellSize = await win.locator('.pixel-cell').first().evaluate(cell => {
+      const style = getComputedStyle(cell);
+      return {
+        width: parseFloat(style.width),
+        height: parseFloat(style.height),
+      };
+    });
+    expect(cellSize.width).toBe(27);
+    expect(cellSize.height).toBe(20);
   });
 
   test('creates Landscape window with 32 cells', async ({ page }) => {

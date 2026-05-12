@@ -338,8 +338,8 @@ button:active {
 
 /* Pixel cell */
 .pixel-cell {
-  width: var(--cell-size);
-  height: var(--cell-size);
+  width: var(--cell-width, var(--cell-size));
+  height: var(--cell-height, var(--cell-size));
   border: 1px solid var(--border);
   cursor: pointer;
   position: relative;
@@ -387,7 +387,7 @@ button:active {
   font-weight: 600;
   font-family: inherit;
   text-align: center;
-  width: var(--cell-size);
+  width: var(--cell-width, var(--cell-size));
   padding: 0 2px;
   outline: none;
   cursor: default;
