@@ -9,6 +9,13 @@ test.describe('Color Palette Editor', () => {
   });
 
   // ── 1. Format loading ───────────────────────────────
+  test('has GitHub link', async ({ page }) => {
+    await expect(page.getByRole('link', { name: 'github' })).toHaveAttribute(
+      'href',
+      'https://github.com/tomosud/ColorPaletteEditor'
+    );
+  });
+
   test('loads formats', async ({ page }) => {
     const options = await page.locator('#format-select option').allTextContents();
     expect(options).toContain('Landscape');

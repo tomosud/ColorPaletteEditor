@@ -49,6 +49,20 @@ body {
   margin-right: 8px;
 }
 
+.repo-link {
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 4px 10px;
+  text-decoration: none;
+  line-height: 1.2;
+}
+
+.repo-link:hover {
+  border-color: var(--accent);
+  color: #ffffff;
+}
+
 .header-controls {
   display: flex;
   align-items: center;
@@ -391,9 +405,9 @@ button:active {
   font-weight: 600;
   font-family: inherit;
   text-align: center;
-  width: var(--cell-width, var(--cell-size));
-  min-width: var(--cell-width, var(--cell-size));
-  max-width: var(--cell-width, var(--cell-size));
+  width: calc(var(--cell-width, var(--cell-size)) - 4px);
+  min-width: calc(var(--cell-width, var(--cell-size)) - 4px);
+  max-width: calc(var(--cell-width, var(--cell-size)) - 4px);
   padding: 0 2px;
   outline: none;
   cursor: default;

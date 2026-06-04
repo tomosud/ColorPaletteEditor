@@ -7,7 +7,7 @@ module.exports = defineConfig({
     headless: true,
   },
   webServer: {
-    command: 'npx serve -p 8099 .',
+    command: 'node scripts/dev-server.js',
     url: 'http://localhost:8099',
     reuseExistingServer: true,
   },

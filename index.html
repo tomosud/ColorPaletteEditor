@@ -10,13 +10,14 @@
 <body>
   <header class="header">
     <span class="app-title">Color Palette Editor</span>
+    <a class="repo-link" href="https://github.com/tomosud/ColorPaletteEditor" target="_blank" rel="noopener noreferrer">github</a>
     <div class="header-controls">
       <select id="format-select">
         <option value="">-- Select Format --</option>
       </select>
       <button id="new-palette-btn">New Palette</button>
       <button id="open-folder-btn">📁 Folder</button>
-      <span class="drop-hint">or drop a PNG/JSON here</span>
+      <span class="drop-hint">or drop a PNG here</span>
     </div>
   </header>
 
@@ -29,7 +30,7 @@
 
   <div id="workspace" class="workspace">
     <div id="drop-overlay" class="drop-overlay">
-      <div class="drop-overlay-text">Drop PNG or JSON to open</div>
+      <div class="drop-overlay-text">Drop PNG to open</div>
     </div>
   </div>
 

@@ -2,6 +2,7 @@
   "name": "color-palette-editor-test",
   "private": true,
   "scripts": {
+    "build": "node scripts/build.js",
     "test": "playwright test",
     "test:ui": "playwright test --ui"
   },
