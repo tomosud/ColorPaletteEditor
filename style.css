@@ -295,6 +295,7 @@ button:active {
   padding: 6px 8px;
   border-bottom: 1px solid var(--border);
   gap: 6px;
+  cursor: move;
 }
 
 .window-toolbar button {

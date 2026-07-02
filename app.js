@@ -530,6 +530,7 @@ function initUI() {
 
   document.getElementById('open-folder-btn').addEventListener('click', openFolder);
 
+  document.getElementById('align-windows-btn').addEventListener('click', alignWindows);
   document.getElementById('folder-bar').addEventListener('click', async (e) => {
     const bar = document.getElementById('folder-bar');
     if (!bar.classList.contains('reconnect')) return;
@@ -663,6 +664,9 @@ class PaletteWindow {
     dlBtn.textContent = state.folderHandle ? 'Save PNG' : 'Download PNG';
     dlBtn.addEventListener('click', () => this.downloadPng());
     toolbar.appendChild(dlBtn);
+    // Toolbar empty area is also a drag handle (so the window is movable
+    // even when the titlebar is out of reach).
+    makeDraggable(win, toolbar, () => this._save());
     win.appendChild(toolbar);
 
     // Grid
@@ -936,19 +940,48 @@ function scheduleSaveActive() {
 function makeDraggable(el, handle, onMoved) {
   let ox, oy;
   handle.addEventListener('mousedown', (e) => {
-    if (e.target.closest('button,input')) return;
+    if (e.target.closest('button,input,textarea,select')) return;
     e.preventDefault();
     ox = e.clientX - el.offsetLeft;
     oy = e.clientY - el.offsetTop;
     const onMove = (e) => {
-      el.style.left = (e.clientX - ox) + 'px';
-      el.style.top  = (e.clientY - oy) + 'px';
+      const ws = el.parentElement;              // #workspace
+      const margin = 60;                        // keep at least this much grabbable
+      const tbH = 34;                           // titlebar height (kept visible)
+      const minLeft = margin - el.offsetWidth;  // window may hang off the left...
+      const maxLeft = ws.clientWidth - margin;  // ...and off the right, but not fully
+      const minTop  = 0;                        // never above workspace top
+      const maxTop  = ws.clientHeight - tbH;    // titlebar always reachable at bottom
+      let left = e.clientX - ox;
+      let top  = e.clientY - oy;
+      left = Math.min(Math.max(left, minLeft), maxLeft);
+      top  = Math.min(Math.max(top,  minTop),  maxTop);
+      el.style.left = left + 'px';
+      el.style.top  = top + 'px';
     };
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', () => {
       document.removeEventListener('mousemove', onMove);
       onMoved?.();
     }, { once: true });
+  });
+}
+
+// Re-arrange every open palette window into a visible cascade near the top-left.
+function alignWindows() {
+  const ws = document.getElementById('workspace');
+  const step = 30;
+  state.windows.forEach((w, i) => {
+    if (!w.el) return;
+    const left = 20 + i * step;
+    const top  = 20 + i * step;
+    // Guard against cascading off the visible area for many windows.
+    const maxLeft = Math.max(20, ws.clientWidth - 120);
+    const maxTop  = Math.max(20, ws.clientHeight - 40);
+    w.el.style.left = Math.min(left, maxLeft) + 'px';
+    w.el.style.top  = Math.min(top, maxTop) + 'px';
+    w._activate();
+    w._save();
   });
 }
 
