@@ -22,47 +22,9 @@ test.describe('Color Palette Editor', () => {
     expect(options).toContain('colorPalette16');
     expect(options).toContain('Leaves');
     expect(options).toContain('Grass');
-    expect(options).toContain('volume gradient');
   });
 
   // ── 2. New palette window ───────────────────────────
-  test('volume gradient has 8 rows and 64 columns', async ({ page }) => {
-    await page.selectOption('#format-select', 'volume gradient');
-    await page.click('#new-palette-btn');
-
-    const win = page.locator('.palette-window');
-    await expect(win.locator('.pixel-cell')).toHaveCount(512);
-
-    const rowLabels = await win.locator('.row-label').allTextContents();
-    expect(rowLabels).toEqual([
-      'Spring',
-      'Summer',
-      'Autumn',
-      'Winter',
-      'Spring night',
-      'Summer night',
-      'Autumn night',
-      'Winter night',
-    ]);
-
-    const colLabels = await win.locator('.col-group-row .col-label-input').evaluateAll(inputs =>
-      inputs.map(input => input.value)
-    );
-    expect(colLabels.at(0)).toBe('1');
-    expect(colLabels.at(-1)).toBe('64');
-    expect(colLabels).toHaveLength(64);
-
-    const cellSize = await win.locator('.pixel-cell').first().evaluate(cell => {
-      const style = getComputedStyle(cell);
-      return {
-        width: parseFloat(style.width),
-        height: parseFloat(style.height),
-      };
-    });
-    expect(cellSize.width).toBe(20);
-    expect(cellSize.height).toBe(25);
-  });
-
   test('creates Landscape window with 32 cells', async ({ page }) => {
     await page.selectOption('#format-select', 'Landscape');
     await page.click('#new-palette-btn');

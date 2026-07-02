@@ -112,7 +112,7 @@ function generateId() {
 
 // ── Load Formats ───────────────────────────────────────
 async function loadFormats() {
-  const formatFiles = ['landscape.json', 'colorPalette16.json', 'leaves.json', 'grass.json', 'volumeGradient.json'];
+  const formatFiles = ['landscape.json', 'colorPalette16.json', 'leaves.json', 'grass.json'];
   const select = document.getElementById('format-select');
   for (const file of formatFiles) {
     try {

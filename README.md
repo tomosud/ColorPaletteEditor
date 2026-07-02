@@ -79,4 +79,3 @@ npm run build
 - `colorPalette16`: 16 列 x 8 行。Spring/Summer/Autumn/Winter の行グループごとに BC と Shadow の 2 行を持ちます。
 - `Leaves`: 8 列 x 2 行。Spring/Summer/Autumn/Winter の列グループごとに color1/color2 の 2 セグメントを持ちます。
 - `Grass`: 4 列 x 2 行。Spring/Summer/Autumn/Winter の単純な 4 列と、BC/Shadow の 2 行です。
-- `volume gradient`: 64 列 x 8 行。季節と night 系の 8 行を持つ横長フォーマットで、セル表示サイズは 20 x 25 に指定されています。
