@@ -651,3 +651,142 @@ button:active {
   font-size: 12px;
   padding: 4px;
 }
+
+/* ── EyeDropper Notice ───────────────────────────── */
+.eyedropper-notice {
+  position: fixed;
+  top: 48px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg3);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.7);
+  padding: 10px 18px;
+  z-index: 2000;
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.7;
+  pointer-events: none;
+}
+
+.eyedropper-notice.hidden {
+  display: none;
+}
+
+.eyedropper-notice-en {
+  color: var(--text-dim);
+}
+
+.eyedropper-notice-ja {
+  color: var(--text);
+  margin-top: 4px;
+}
+
+.eyedropper-notice b {
+  color: var(--accent2);
+}
+
+/* ── Image Pick Panel ────────────────────────────── */
+.image-pick-panel {
+  position: fixed;
+  top: 60px;
+  left: 260px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.7);
+  z-index: 1001;
+  display: flex;
+  flex-direction: column;
+  min-width: 260px;
+  max-width: 640px;
+}
+
+.image-pick-panel.hidden {
+  display: none;
+}
+
+.image-pick-panel .picker-header {
+  cursor: move;
+}
+
+.image-pick-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.image-pick-toolbar button {
+  font-size: 12px;
+  padding: 3px 10px;
+  white-space: nowrap;
+}
+
+.image-zoom-slider {
+  flex: 1;
+  min-width: 60px;
+}
+
+.image-zoom-val {
+  font-size: 11px;
+  color: var(--text-dim);
+  width: 38px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.image-pick-canvas-wrap {
+  position: relative;
+  overflow: auto;
+  max-width: 620px;
+  max-height: 480px;
+  min-height: 120px;
+  background: var(--bg1, #1a1a1a);
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+#image-pick-canvas {
+  display: block;
+  image-rendering: pixelated;
+  cursor: crosshair;
+}
+
+.image-pick-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.8;
+  pointer-events: none;
+}
+
+.image-pick-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-top: 1px solid var(--border);
+}
+
+.image-pick-swatch {
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: transparent;
+  flex-shrink: 0;
+}
+
+.image-pick-hex {
+  font-size: 12px;
+  font-family: Consolas, monospace;
+  color: var(--text);
+}

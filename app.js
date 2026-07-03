@@ -25,6 +25,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   initUI();
   initDrop();
   initDragSelection();
+  initImagePick();
   await loadSavedPalettes();
   state.dbReady = true;
   await tryRestoreFolder();
@@ -222,6 +223,8 @@ function initColorPicker() {
   const eyedropperBtn = document.getElementById('eyedropper-btn');
   if (window.EyeDropper) {
     eyedropperBtn.addEventListener('click', async () => {
+      const notice = document.getElementById('eyedropper-notice');
+      notice.classList.remove('hidden');
       try {
         const dropper = new EyeDropper();
         const result = await dropper.open();
@@ -230,6 +233,8 @@ function initColorPicker() {
         state.colorPicker.color.hexString = result.sRGBHex;
       } catch (e) {
         // キャンセルされた場合は何もしない
+      } finally {
+        notice.classList.add('hidden');
       }
     });
   } else {
@@ -985,6 +990,131 @@ function alignWindows() {
   });
 }
 
+// ── Image Pick (load image & pick colors) ──────────────
+const imagePick = { imageData: null, zoom: 1 };
+
+function initImagePick() {
+  const panel   = document.getElementById('image-pick-panel');
+  const canvas  = document.getElementById('image-pick-canvas');
+  const fileInp = document.getElementById('image-file-input');
+  const zoomSlider = document.getElementById('image-zoom-slider');
+
+  document.getElementById('image-pick-btn').addEventListener('click', () => {
+    panel.classList.remove('hidden');
+  });
+  document.getElementById('image-pick-close-btn').addEventListener('click', () => {
+    panel.classList.add('hidden');
+  });
+  makeDraggable(panel, document.getElementById('image-pick-header'));
+
+  // 📂 Open file
+  document.getElementById('image-open-btn').addEventListener('click', () => fileInp.click());
+  fileInp.addEventListener('change', () => {
+    const file = fileInp.files[0];
+    if (file) loadImageForPick(file, file.name);
+    fileInp.value = '';
+  });
+
+  // 📋 Paste from clipboard
+  document.getElementById('image-paste-btn').addEventListener('click', async () => {
+    try {
+      const items = await navigator.clipboard.read();
+      for (const item of items) {
+        const type = item.types.find(t => t.startsWith('image/'));
+        if (type) {
+          const blob = await item.getType(type);
+          loadImageForPick(blob, 'clipboard');
+          return;
+        }
+      }
+      alert('クリップボードに画像がありません。');
+    } catch (e) {
+      alert('クリップボードの読み取りに失敗しました。\n' + e.message);
+    }
+  });
+
+  // Zoom
+  zoomSlider.addEventListener('input', () => {
+    imagePick.zoom = parseInt(zoomSlider.value) / 100;
+    document.getElementById('image-zoom-val').textContent = zoomSlider.value + '%';
+    applyImageZoom();
+  });
+
+  // Hover preview
+  canvas.addEventListener('mousemove', (e) => {
+    const hex = pickHexAt(e);
+    if (!hex) return;
+    document.getElementById('image-pick-swatch').style.background = hex;
+    document.getElementById('image-pick-hex').textContent = hex;
+  });
+
+  // Click → set picker color (applies to selected cells, same as EyeDropper)
+  canvas.addEventListener('mousedown', (e) => {
+    e.stopPropagation();
+    const hex = pickHexAt(e);
+    if (!hex) return;
+    if (state.selectedCells.length > 0 && state.activeWindow)
+      state.activeWindow._snapshotBefore();
+    state._pickerChanging = false;
+    state.colorPicker.color.hexString = hex;
+    document.getElementById('image-pick-swatch').style.background = hex;
+    document.getElementById('image-pick-hex').textContent = hex;
+  });
+}
+
+function loadImageForPick(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const img = new Image();
+  img.onload = () => {
+    URL.revokeObjectURL(url);
+    const canvas = document.getElementById('image-pick-canvas');
+    canvas.width  = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true, colorSpace: 'srgb' });
+    ctx.drawImage(img, 0, 0);
+    imagePick.imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+    document.getElementById('image-pick-empty').style.display = 'none';
+    document.getElementById('image-pick-title').textContent =
+      `Image Pick — ${name} (${img.naturalWidth}×${img.naturalHeight})`;
+    document.getElementById('image-pick-panel').classList.remove('hidden');
+
+    // Initial zoom: fit into ~480px
+    const fit = Math.min(1, 480 / Math.max(img.naturalWidth, img.naturalHeight));
+    imagePick.zoom = fit;
+    const pct = Math.round(fit * 100);
+    document.getElementById('image-zoom-slider').value = pct;
+    document.getElementById('image-zoom-val').textContent = pct + '%';
+    applyImageZoom();
+  };
+  img.onerror = () => {
+    URL.revokeObjectURL(url);
+    alert('画像の読み込みに失敗しました。');
+  };
+  img.src = url;
+}
+
+function applyImageZoom() {
+  const canvas = document.getElementById('image-pick-canvas');
+  canvas.style.width  = (canvas.width  * imagePick.zoom) + 'px';
+  canvas.style.height = (canvas.height * imagePick.zoom) + 'px';
+}
+
+function pickHexAt(e) {
+  if (!imagePick.imageData) return null;
+  const canvas = e.currentTarget;
+  const rect = canvas.getBoundingClientRect();
+  const x = Math.floor((e.clientX - rect.left) / rect.width  * canvas.width);
+  const y = Math.floor((e.clientY - rect.top)  / rect.height * canvas.height);
+  if (x < 0 || y < 0 || x >= canvas.width || y >= canvas.height) return null;
+  const i = (y * canvas.width + x) * 4;
+  const d = imagePick.imageData.data;
+  return '#' +
+    d[i]  .toString(16).padStart(2, '0') +
+    d[i+1].toString(16).padStart(2, '0') +
+    d[i+2].toString(16).padStart(2, '0');
+}
+
 // ── Drop (PNG / JSON) ──────────────────────────────────
 function initDrop() {
   const overlay = document.getElementById('drop-overlay');
@@ -997,6 +1127,7 @@ function initDrop() {
     if (!file) return;
     if (file.name.endsWith('.json')) handleJsonDrop(file);
     else if (file.type === 'image/png' || file.name.endsWith('.png')) handlePngDrop(file);
+    else if (file.type.startsWith('image/') || /\.(jpe?g|bmp|gif|webp)$/i.test(file.name)) loadImageForPick(file, file.name);
   });
 }
 
@@ -1029,7 +1160,7 @@ function handlePngDrop(file) {
   const reader = new FileReader();
   reader.onload = (e) => {
     const json = extractPngText(e.target.result, 'CPE_DATA');
-    if (!json) { alert('No palette data in this PNG.'); return; }
+    if (!json) { loadImageForPick(file, file.name); return; }  // パレットデータ無し → 画像ピックで開く
     try {
       const data = JSON.parse(json);
       createPaletteWindow(data.format, data.pixels, { id: data.id, name: data.name, colLabels: data.colLabels, memo: data.memo });

@@ -18,7 +18,8 @@
       <button id="new-palette-btn">New Palette</button>
       <button id="open-folder-btn">📁 Folder</button>
       <button id="align-windows-btn" title="全ウィンドウの位置をリセット">⧉ Align</button>
-      <span class="drop-hint">or drop a PNG here</span>
+      <button id="image-pick-btn" title="画像を読み込んで色をピック">🖼 Image</button>
+      <span class="drop-hint">or drop a PNG / image here</span>
     </div>
   </header>
 
@@ -31,8 +32,37 @@
 
   <div id="workspace" class="workspace">
     <div id="drop-overlay" class="drop-overlay">
-      <div class="drop-overlay-text">Drop PNG to open</div>
+      <div class="drop-overlay-text">Drop PNG / Image to open</div>
     </div>
+  </div>
+
+  <!-- EyeDropper notice (shown while picking from screen) -->
+  <div id="eyedropper-notice" class="eyedropper-notice hidden">
+    <div class="eyedropper-notice-en">If the picked color looks shifted (HDR / wide-gamut display),<br>drop the image into this tool and use <b>Image Pick</b> instead.</div>
+    <div class="eyedropper-notice-ja">色がずれて取得される場合は、ピックしたい画像をこのツールにドロップして<br><b>Image Pick</b> モードを使ってください。</div>
+  </div>
+
+  <!-- Image Pick Panel (floating) -->
+  <div id="image-pick-panel" class="image-pick-panel hidden">
+    <div class="picker-header" id="image-pick-header">
+      <span class="picker-title" id="image-pick-title">Image Pick</span>
+      <button id="image-pick-close-btn" class="picker-close-btn">✕</button>
+    </div>
+    <div class="image-pick-toolbar">
+      <button id="image-open-btn" title="画像ファイルを開く (PNG/JPEG/BMP/GIF/WebP)">📂 Open</button>
+      <button id="image-paste-btn" title="クリップボードの画像を読み込む">📋 Paste</button>
+      <input type="range" id="image-zoom-slider" class="image-zoom-slider" min="10" max="800" value="100" title="Zoom">
+      <span id="image-zoom-val" class="image-zoom-val">100%</span>
+    </div>
+    <div class="image-pick-canvas-wrap" id="image-pick-canvas-wrap">
+      <canvas id="image-pick-canvas" width="0" height="0"></canvas>
+      <div class="image-pick-empty" id="image-pick-empty">📂 Open / 📋 Paste<br>または画像をここへドロップ</div>
+    </div>
+    <div class="image-pick-status">
+      <span class="image-pick-swatch" id="image-pick-swatch"></span>
+      <span id="image-pick-hex" class="image-pick-hex">-</span>
+    </div>
+    <input type="file" id="image-file-input" accept="image/png,image/jpeg,image/bmp,image/gif,image/webp,image/*" hidden>
   </div>
 
   <!-- Color Picker Panel (shared, floating) -->
