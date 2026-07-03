@@ -303,6 +303,92 @@ button:active {
   padding: 3px 8px;
 }
 
+/* ── Layer Panel (Photoshop-like) ────────────────── */
+.layer-panel {
+  border-bottom: 1px solid var(--border);
+  padding: 4px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.layer-add-btn {
+  align-self: flex-start;
+  font-size: 11px;
+  padding: 2px 8px;
+  color: var(--text-dim);
+}
+
+.layer-add-btn:hover {
+  color: var(--text);
+}
+
+.layer-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.layer-row:hover {
+  background: var(--bg3);
+}
+
+.layer-row.active {
+  background: var(--select, #264f78);
+  border-color: var(--accent);
+}
+
+.layer-row.active .layer-name {
+  color: var(--accent2);
+  font-weight: 600;
+}
+
+.layer-eye {
+  background: none;
+  border: none;
+  font-size: 12px;
+  padding: 0 2px;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.layer-eye.off {
+  opacity: 0.25;
+  filter: grayscale(1);
+}
+
+.layer-name {
+  flex: 1;
+  font-size: 11px;
+  color: var(--text);
+  user-select: none;
+}
+
+.layer-del-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 11px;
+  padding: 0 3px;
+  cursor: pointer;
+  border-radius: 2px;
+}
+
+.layer-del-btn:hover {
+  background: #c42b1c;
+  color: #fff;
+}
+
+.layer-hint {
+  font-size: 10px;
+  color: #d7ba7d;
+  padding: 2px 4px;
+}
+
 .window-content {
   padding: 10px;
   overflow: auto;

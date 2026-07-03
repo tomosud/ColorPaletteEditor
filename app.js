@@ -94,11 +94,13 @@ async function loadSavedPalettes() {
   const records = await dbLoadAll();
   for (const rec of records) {
     new PaletteWindow(rec.format, rec.pixels, {
-      id:        rec.id,
-      name:      rec.name,
-      position:  rec.position,
-      colLabels: rec.colLabels,
-      memo:      rec.memo,
+      id:             rec.id,
+      name:           rec.name,
+      position:       rec.position,
+      colLabels:      rec.colLabels,
+      memo:           rec.memo,
+      multiplyPixels: rec.multiplyPixels,
+      layerUI:        rec.layerUI,
     });
   }
 }
@@ -516,7 +518,7 @@ async function openFolderEntry(entry) {
       try {
         const data = JSON.parse(json);
         createPaletteWindow(data.format, data.pixels,
-          { id: data.id, name: baseName, colLabels: data.colLabels, memo: data.memo });
+          { id: data.id, name: baseName, colLabels: data.colLabels, memo: data.memo, multiplyPixels: data.multiplyPixels });
       } catch { alert('Failed to parse palette data.'); }
     };
     reader.readAsArrayBuffer(file);
@@ -560,6 +562,13 @@ class PaletteWindow {
     this.name      = opts.name || format.name;
     this.format    = format;
     this.pixels    = pixelData || this._initPixels();
+    // Multiply layer (optional — absent in legacy data)
+    this.multiplyPixels = opts.multiplyPixels
+      ? normalizeLayer(opts.multiplyPixels, format.width, format.height, '#ffffff')
+      : null;
+    // Layer UI state: active edit layer + per-layer visibility
+    this.layerUI = opts.layerUI || { active: 'base', baseVisible: true, multiplyVisible: true };
+    if (!this.multiplyPixels) this.layerUI.active = 'base';
     this.colLabels = opts.colLabels || format.columns.map(c => c.label);
     this.memo      = opts.memo || '';
     this.el        = null;
@@ -577,30 +586,110 @@ class PaletteWindow {
     );
   }
 
-  getColor(row, col) { return this.pixels[row]?.[col] ?? '#808080'; }
+  // ── Layers ──────────────────────────────────────────
+  hasMultiply() { return !!this.multiplyPixels; }
+
+  _isMultiplyActive() { return this.hasMultiply() && this.layerUI.active === 'multiply'; }
+
+  _activeArr() { return this._isMultiplyActive() ? this.multiplyPixels : this.pixels; }
+
+  _activeLayerVisible() {
+    if (!this.hasMultiply()) return true;
+    return this.layerUI.active === 'multiply' ? this.layerUI.multiplyVisible : this.layerUI.baseVisible;
+  }
+
+  // Composite color for cell display (visible layers only)
+  displayColor(row, col) {
+    if (!this.hasMultiply()) return this.pixels[row]?.[col] ?? '#808080';
+    const { baseVisible, multiplyVisible } = this.layerUI;
+    const b = this.pixels[row]?.[col] ?? '#808080';
+    const m = this.multiplyPixels[row]?.[col] ?? '#ffffff';
+    if (baseVisible && multiplyVisible) return multiplyHex(b, m);
+    if (baseVisible) return b;
+    if (multiplyVisible) return m;
+    return null; // no visible layer
+  }
+
+  _paintCell(row, col) {
+    const cell = this.el.querySelector(`[data-row="${row}"][data-col="${col}"]`);
+    if (cell) cell.style.background = this.displayColor(row, col) ?? '#222';
+  }
+
+  refreshCells() {
+    for (let r = 0; r < this.format.height; r++)
+      for (let c = 0; c < this.format.width; c++) this._paintCell(r, c);
+  }
+
+  addMultiplyLayer() {
+    if (this.hasMultiply()) return;
+    this._snapshotBefore();
+    this.multiplyPixels = Array.from({ length: this.format.height }, () =>
+      Array.from({ length: this.format.width }, () => '#ffffff'));
+    // 見た目は合成(Both)、編集対象は Multiply
+    this.layerUI = { active: 'multiply', baseVisible: true, multiplyVisible: true };
+    this._onLayerChanged();
+  }
+
+  removeMultiplyLayer() {
+    if (!this.hasMultiply()) return;
+    if (!confirm('Multiply レイヤーを削除しますか？ (Ctrl+Z で元に戻せます)')) return;
+    this._snapshotBefore();
+    this.multiplyPixels = null;
+    this.layerUI.active = 'base';
+    this._onLayerChanged();
+  }
+
+  // Layer switch / visibility change: reset adjust origins to avoid
+  // writing colors captured from another layer, then repaint & sync picker.
+  _onLayerChanged() {
+    // 片方だけ表示中なら、編集対象を表示中のレイヤーへ自動で合わせる
+    if (this.hasMultiply()) {
+      const { baseVisible, multiplyVisible } = this.layerUI;
+      if (baseVisible && !multiplyVisible) this.layerUI.active = 'base';
+      else if (multiplyVisible && !baseVisible) this.layerUI.active = 'multiply';
+    }
+    state.adjustOrigins = {};
+    ['dh', 'ds', 'dv'].forEach(id => {
+      document.getElementById(`${id}-slider`).value = 0;
+      document.getElementById(`${id}-input`).value  = 0;
+    });
+    captureAdjustOrigins();
+    this._renderLayerPanel();
+    this.refreshCells();
+    const sel = state.selectedCells.find(s => s.win === this);
+    if (sel) setPickerColor(this.getColor(sel.row, sel.col));
+    this._save();
+  }
+
+  getColor(row, col) {
+    return this._activeArr()[row]?.[col] ?? (this._isMultiplyActive() ? '#ffffff' : '#808080');
+  }
 
   setColor(row, col, hex6) {
-    if (!this.pixels[row]) return;
-    this.pixels[row][col] = hex6;
-    const cell = this.el.querySelector(`[data-row="${row}"][data-col="${col}"]`);
-    if (cell) cell.style.background = hex6;
+    if (!this._activeLayerVisible()) return; // hidden layer is not editable
+    const arr = this._activeArr();
+    if (!arr[row]) return;
+    arr[row][col] = hex6;
+    this._paintCell(row, col);
   }
 
   // ── Undo ───────────────────────────────────────────
   _snapshotBefore() {
-    this._pastStack.push(this.pixels.map(r => [...r]));
+    this._pastStack.push({
+      pixels:         this.pixels.map(r => [...r]),
+      multiplyPixels: this.multiplyPixels ? this.multiplyPixels.map(r => [...r]) : null,
+    });
     if (this._pastStack.length > 50) this._pastStack.shift();
   }
 
   _undo() {
     if (this._pastStack.length === 0) return;
-    this.pixels = this._pastStack.pop();
-    // Refresh all cells visually
-    for (let r = 0; r < this.format.height; r++)
-      for (let c = 0; c < this.format.width; c++) {
-        const cell = this.el.querySelector(`[data-row="${r}"][data-col="${c}"]`);
-        if (cell) cell.style.background = this.pixels[r][c] ?? '#808080';
-      }
+    const snap = this._pastStack.pop();
+    this.pixels         = snap.pixels;
+    this.multiplyPixels = snap.multiplyPixels;
+    if (!this.multiplyPixels && this.layerUI.active === 'multiply') this.layerUI.active = 'base';
+    this._renderLayerPanel();
+    this.refreshCells();
     // Update picker if selection still active
     if (state.selectedCells.some(s => s.win === this)) {
       const { row, col } = state.selectedCells.find(s => s.win === this);
@@ -613,12 +702,14 @@ class PaletteWindow {
     clearTimeout(this._saveTimer);
     this._saveTimer = setTimeout(() => {
       dbSave({
-        id:        this.id,
-        name:      this.name,
-        format:    this.format,
-        pixels:    this.pixels,
-        colLabels: this.colLabels,
-        memo:      this.memo,
+        id:             this.id,
+        name:           this.name,
+        format:         this.format,
+        pixels:         this.pixels,
+        multiplyPixels: this.multiplyPixels,
+        layerUI:        this.layerUI,
+        colLabels:      this.colLabels,
+        memo:           this.memo,
         position:  { top: parseInt(this.el.style.top), left: parseInt(this.el.style.left) },
       });
     }, 400);
@@ -674,6 +765,12 @@ class PaletteWindow {
     makeDraggable(win, toolbar, () => this._save());
     win.appendChild(toolbar);
 
+    // Layer panel (Photoshop-like: eye toggle + active layer)
+    this.layerPanel = document.createElement('div');
+    this.layerPanel.className = 'layer-panel';
+    this._renderLayerPanel();
+    win.appendChild(this.layerPanel);
+
     // Grid
     const content = document.createElement('div');
     content.className = 'window-content';
@@ -705,6 +802,77 @@ class PaletteWindow {
     }
     if (Number.isFinite(display.cellHeight) && display.cellHeight > 0) {
       win.style.setProperty('--cell-height', `${display.cellHeight}px`);
+    }
+  }
+
+  // ── Layer panel (Photoshop-like) ─────────────────
+  _renderLayerPanel() {
+    const p = this.layerPanel;
+    if (!p) return;
+    p.innerHTML = '';
+
+    if (!this.hasMultiply()) {
+      // Legacy look: just a small "+ Multiply" button
+      const addBtn = document.createElement('button');
+      addBtn.className = 'layer-add-btn';
+      addBtn.textContent = '+ Multiply';
+      addBtn.title = '乗算レイヤーを追加 (初期色: 白)';
+      addBtn.addEventListener('mousedown', e => e.stopPropagation());
+      addBtn.addEventListener('click', () => this.addMultiplyLayer());
+      p.appendChild(addBtn);
+      return;
+    }
+
+    const mkRow = (key, label) => {
+      const row = document.createElement('div');
+      row.className = 'layer-row' + (this.layerUI.active === key ? ' active' : '');
+      row.addEventListener('mousedown', e => e.stopPropagation());
+
+      const visKey = `${key}Visible`;
+      const eyeBtn = document.createElement('button');
+      eyeBtn.className = 'layer-eye' + (this.layerUI[visKey] ? '' : ' off');
+      eyeBtn.textContent = '\u{1F441}';
+      eyeBtn.title = '表示/非表示 (非表示レイヤーは編集不可)';
+      eyeBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.layerUI[visKey] = !this.layerUI[visKey];
+        this._onLayerChanged();
+      });
+      row.appendChild(eyeBtn);
+
+      const nameSpan = document.createElement('span');
+      nameSpan.className = 'layer-name';
+      nameSpan.textContent = label;
+      row.appendChild(nameSpan);
+
+      row.addEventListener('click', () => {
+        if (this.layerUI.active === key) return;
+        this.layerUI.active = key;
+        this._onLayerChanged();
+      });
+      return row;
+    };
+
+    // Multiply on top (like Photoshop stacking order)
+    const mRow = mkRow('multiply', 'Multiply');
+    const delBtn = document.createElement('button');
+    delBtn.className = 'layer-del-btn';
+    delBtn.textContent = '✕';
+    delBtn.title = 'Multiply レイヤーを削除';
+    delBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.removeMultiplyLayer();
+    });
+    mRow.appendChild(delBtn);
+    p.appendChild(mRow);
+    p.appendChild(mkRow('base', 'Base'));
+
+    // Hidden-active warning hint
+    if (!this._activeLayerVisible()) {
+      const hint = document.createElement('div');
+      hint.className = 'layer-hint';
+      hint.textContent = '非表示レイヤー選択中：編集不可 / Hidden layer: not editable';
+      p.appendChild(hint);
     }
   }
 
@@ -814,7 +982,7 @@ class PaletteWindow {
         td.className = 'pixel-cell';
         td.dataset.row = rowIndex;
         td.dataset.col = col;
-        td.style.background = this.pixels[rowIndex]?.[col] ?? '#808080';
+        td.style.background = this.displayColor(rowIndex, col) ?? '#222';
         const _r = rowIndex, _c = col;
         td.addEventListener('mousedown', (e) => this._onCellMouseDown(e, _r, _c));
         tr.appendChild(td);
@@ -881,19 +1049,36 @@ class PaletteWindow {
 
   // ── PNG export ───────────────────────────────────────
   downloadPng() {
+    // Multiply ありで両方表示になっていない場合は警告して切替えてから保存
+    if (this.hasMultiply() && (!this.layerUI.baseVisible || !this.layerUI.multiplyVisible)) {
+      alert('両方のレイヤーを表示した合成結果で保存します。表示を切り替えます。\nSaving composite of both layers. Switching to show both.');
+      this.layerUI.baseVisible = true;
+      this.layerUI.multiplyVisible = true;
+      this._onLayerChanged();
+    }
+
     const { width, height } = this.format;
     const canvas = document.createElement('canvas');
     canvas.width = width; canvas.height = height;
     const ctx = canvas.getContext('2d');
     for (let r = 0; r < height; r++)
       for (let c = 0; c < width; c++) {
-        ctx.fillStyle = this.pixels[r][c] ?? '#808080';
+        const b = this.pixels[r][c] ?? '#808080';
+        ctx.fillStyle = this.hasMultiply()
+          ? multiplyHex(b, this.multiplyPixels[r][c] ?? '#ffffff')
+          : b;
         ctx.fillRect(c, r, 1, 1);
       }
 
     canvas.toBlob(async (blob) => {
       const buf = await blob.arrayBuffer();
-      const meta = JSON.stringify({ id: this.id, name: this.name, format: this.format, pixels: this.pixels, colLabels: this.colLabels, memo: this.memo });
+      const meta = JSON.stringify({
+        id: this.id, name: this.name, format: this.format,
+        pixels: this.pixels,
+        multiplyPixels: this.multiplyPixels ?? undefined,
+        layerUI: this.hasMultiply() ? this.layerUI : undefined,
+        colLabels: this.colLabels, memo: this.memo,
+      });
       const pngWithMeta = injectPngText(buf, 'CPE_DATA', meta);
       const pngBlob = new Blob([pngWithMeta], { type: 'image/png' });
 
@@ -1137,7 +1322,7 @@ function handleJsonDrop(file, overrideName) {
     try {
       const data = JSON.parse(e.target.result);
       if (data.format && data.pixels) {
-        createPaletteWindow(data.format, data.pixels, { id: data.id, name: overrideName ?? data.name, colLabels: data.colLabels, memo: data.memo });
+        createPaletteWindow(data.format, data.pixels, { id: data.id, name: overrideName ?? data.name, colLabels: data.colLabels, memo: data.memo, multiplyPixels: data.multiplyPixels });
       } else if (data.name && data.width) {
         state.formats[data.name] = data;
         addFormatOption(data);
@@ -1163,7 +1348,7 @@ function handlePngDrop(file) {
     if (!json) { loadImageForPick(file, file.name); return; }  // パレットデータ無し → 画像ピックで開く
     try {
       const data = JSON.parse(json);
-      createPaletteWindow(data.format, data.pixels, { id: data.id, name: data.name, colLabels: data.colLabels, memo: data.memo });
+      createPaletteWindow(data.format, data.pixels, { id: data.id, name: data.name, colLabels: data.colLabels, memo: data.memo, multiplyPixels: data.multiplyPixels });
     } catch { alert('Failed to parse palette data.'); }
   };
   reader.readAsArrayBuffer(file);
@@ -1357,3 +1542,23 @@ function resetAdjust() {
 
 // ── Utilities ──────────────────────────────────────────
 function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+
+// Multiply blend of two hex colors (per-channel a*b/255)
+function multiplyHex(a, b) {
+  const ch = (h, i) => parseInt(h.slice(i, i + 2), 16);
+  const mul = (x, y) => Math.round(x * y / 255);
+  return '#' +
+    mul(ch(a, 1), ch(b, 1)).toString(16).padStart(2, '0') +
+    mul(ch(a, 3), ch(b, 3)).toString(16).padStart(2, '0') +
+    mul(ch(a, 5), ch(b, 5)).toString(16).padStart(2, '0');
+}
+
+// Ensure a layer array matches width×height; fill invalid/missing cells
+function normalizeLayer(arr, width, height, fill) {
+  return Array.from({ length: height }, (_, r) =>
+    Array.from({ length: width }, (_, c) => {
+      const v = arr?.[r]?.[c];
+      return (typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v)) ? v : fill;
+    })
+  );
+}
